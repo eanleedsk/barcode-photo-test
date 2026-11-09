@@ -57,6 +57,8 @@
     <div id="by-shelf"><p class="note">아직 없습니다.</p></div>
   </section>
 
+  <div id="log-box"></div>
+
   <section class="card" aria-labelledby="h-log">
     <h2 class="h2" id="h-log">읽은 순서</h2>
     <ol class="log" id="log"></ol>
@@ -86,10 +88,12 @@
 <script src="../vendor/reader.iife.js"></script>
 <script src="../shared/scan_core.js"></script>
 <script src="../shared/ref_remote.js"></script>
+<script src="../shared/stock_log.js"></script>
 <script>
 (function () {
   'use strict';
-  var C = window.KtsCore, $ = C.$, E = C.el, RO = window.KtsRefOcr;
+  var C = window.KtsCore, $ = C.$, E = C.el, RO = window.KtsRefOcr, LOG = window.KtsStockLog;
+  var logBox = null;
   var OCR_WAIT_MS = 25000;      // (버튼) REF 글자 읽기(회사 AI)를 기다리는 최대 시간
   var VENDOR = '../vendor/';
   var GAP_MS = 1200;            // (자동 연속) 같은 바코드가 이 시간 이상 안 보였다가 다시 보이면 새로 센다
@@ -652,10 +656,35 @@
       var when = C.fmtClock(new Date(ev.t));
       if (ev.kind === 'shelf') li.appendChild(E('b', '', '📍 선반 ' + ev.shelf));
       else li.appendChild(E('b', '', evTitle(ev) + (evName(ev) ? ' · ' + evName(ev) : '')));
-      li.appendChild(E('span', 'meta', when + ' · ' + C.formatLabel(ev.format) + (ev.kind === 'item' ? ' · ' + evMeta(ev) : '') + (ev.removed ? ' · 같은 라벨의 시리얼이라 취소' : '')));
+      li.appendChild(E('span', 'meta', when + ' · ' + C.formatLabel(ev.format) + (ev.kind === 'item' ? ' · ' + evMeta(ev) : '') + (ev.removed ? ' · 같은 라벨의 시리얼이라 취소' : '') + (ev.sent ? ' · ✅ 기록함' : '')));
       log.appendChild(li);
     });
+    if (logBox) logBox.refresh();   // 입출고 기록 칸의 보낼 목록도 새로
   }
+
+  /* ---------- 입출고 기록(회사 엑셀): 아직 안 보낸 기록을 선반·REF별로 묶어서 ---------- */
+  function getLogItems() {
+    var groups = {}, order = [], skipped = 0;
+    liveEvents().forEach(function (e) {
+      if (e.sent) return;
+      if (!e.item) { skipped++; return; }
+      var k = (e.shelf || '') + '|' + C.normCode(e.item.code);
+      if (!groups[k]) {
+        groups[k] = { key: k, ref: e.item.code, name: e.item.name || '', qty: 0, shelf: e.shelf || '', loc: e.item.loc || '',
+                      serials: [], how: '바코드', evs: [] };
+        order.push(k);
+      }
+      var g = groups[k];
+      g.qty++; g.evs.push(e);
+      if (e.serial && g.serials.indexOf(e.serial) < 0) g.serials.push(e.serial);
+      if (e.refHow) g.how = 'REF 글자';
+    });
+    return { items: order.map(function (k) { var g = groups[k]; g.serial = g.serials.join(','); return g; }), skipped: skipped };
+  }
+  logBox = LOG.mountBox($('log-box'), getLogItems, function (items) {
+    items.forEach(function (it) { it.evs.forEach(function (e) { e.sent = true; }); });
+    renderAll();
+  });
 
   /* ---------- 결과 복사 ---------- */
   $('btn-copy').addEventListener('click', function () {
