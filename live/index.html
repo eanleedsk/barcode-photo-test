@@ -31,7 +31,10 @@
       <button class="small-btn" id="btn-torch" type="button" hidden>🔦 손전등</button>
       <button class="small-btn" id="btn-reset" type="button" style="margin-left:auto">처음부터</button>
     </div>
-    <label class="check"><input type="checkbox" id="opt-sound" checked> 소리 내기</label>
+    <div class="row">
+      <label class="check" style="margin-top:0"><input type="checkbox" id="opt-sound" checked> 소리 내기</label>
+      <button class="small-btn" id="btn-sound-test" type="button" style="margin-left:auto">🔊 소리 시험</button>
+    </div>
     <p class="status" id="cam-status" role="status">읽기 엔진 준비 중…</p>
     <div class="shelf-now">현재 선반: <b id="shelf">없음</b><br><span style="font-size:13px">선반 QR을 먼저 비추면, 다음에 읽는 물건을 그 선반으로 묶어 셉니다.</span></div>
     <div class="last-scan" id="last" aria-live="polite"><div class="m">아직 읽은 것이 없습니다.</div></div>
@@ -55,7 +58,8 @@
   <section class="card" aria-labelledby="h-how">
     <h2 class="h2" id="h-how">사용법·시험 방법</h2>
     <ul class="tips">
-      <li>라벨을 네모 칸 안에 비추면 "삑" 소리와 함께 하나 셉니다.</li>
+      <li>라벨을 네모 칸 안에 비추면 "삑" 소리와 함께 하나 셉니다. 카메라를 켤 때 "삑" 한 번이 나면 소리가 정상입니다.</li>
+      <li>소리가 안 나면 "🔊 소리 시험"을 눌러 보고, 폰 음량 버튼(미디어 음량)을 올려 주세요.</li>
       <li>계속 비추고 있으면 한 번만 셉니다. 같은 물건이 여러 개면, 하나 비추고 → 화면에서 잠깐 뺐다가 → 다음 걸 비추세요.</li>
       <li>시험: 라벨 10개를 순서대로 비추고, 걸린 시간과 잘못 읽은 것이 있는지 "결과 복사"로 보내 주세요.</li>
     </ul>
@@ -85,7 +89,7 @@
   var list = C.getList(), index = list ? C.makeIndex(list.items) : null;
   var vid = $('vid'), canvas = document.createElement('canvas');
   var ctx = canvas.getContext('2d', { willReadFrequently: true });
-  var stream = null, running = false, busy = false, timer = null, audio = null, torchOn = false;
+  var stream = null, running = false, busy = false, timer = null, torchOn = false;
   var S;   // 시험 기록
 
   function resetStats() {
@@ -103,22 +107,82 @@
 
   function status(msg, cls) { var s = $('cam-status'); s.textContent = msg; s.className = 'status ' + (cls || ''); }
 
-  /* ---------- 소리·진동·번쩍임 ---------- */
-  function beep(kind) {
-    if (navigator.vibrate) { try { navigator.vibrate(kind === 'warn' ? [60, 60, 60] : 50); } catch (e) { /* 무시 */ } }
-    if (!audio || !$('opt-sound').checked) return;
+  /* ---------- 소리·진동·번쩍임 ----------
+   * 아이폰 주의 ① 소리는 버튼을 누른 "그 순간"(기다리는 코드보다 먼저) 한 번 틀어 둬야 이후에도 나온다.
+   *            ② 무음 모드(옆 스위치)면 '웹 오디오' 소리는 꺼진다 → 오디오 태그(동영상 소리처럼 취급)로 튼다.
+   * 그래서 짧은 삑 소리 파일(wav)을 폰 안에서 만들어 오디오 태그 하나로 튼다. 막히면 웹 오디오로 한 번 더 시도.
+   */
+  var SOUNDS = { ok: [[1900, 0, 0.08]], shelf: [[1200, 0, 0.07], [1600, 0.09, 0.07]], warn: [[520, 0, 0.12], [520, 0.18, 0.12]] };
+  var soundUrls = {}, player = null, actx = null;
+  var soundStat = { ok: 0, fail: 0, err: '' };
+
+  function wavUrl(tones) {
+    var rate = 22050, end = 0;
+    tones.forEach(function (t) { end = Math.max(end, t[1] + t[2]); });
+    var n = Math.ceil((end + 0.02) * rate), buf = new ArrayBuffer(44 + n * 2), dv = new DataView(buf);
+    function str(o, s) { for (var i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); }
+    str(0, 'RIFF'); dv.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    str(36, 'data'); dv.setUint32(40, n * 2, true);
+    var s = new Float32Array(n), ramp = 0.004 * rate;
+    tones.forEach(function (t) {
+      var s0 = Math.floor(t[1] * rate), len = Math.floor(t[2] * rate);
+      for (var i = 0; i < len && s0 + i < n; i++) {
+        var env = Math.min(1, i / ramp, (len - i) / ramp);             // 시작·끝 딸깍 소리 방지
+        s[s0 + i] += (Math.sin(2 * Math.PI * t[0] * i / rate) >= 0 ? 1 : -1) * env;
+      }
+    });
+    for (var k = 0; k < n; k++) dv.setInt16(44 + k * 2, Math.round(Math.max(-1, Math.min(1, s[k] * 0.45)) * 32767), true);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+  function playKind(kind) {
+    if (!player) return Promise.reject(new Error('소리 준비 안 됨'));
+    try { player.pause(); } catch (e) { /* 무시 */ }
+    player.src = soundUrls[kind] || (soundUrls[kind] = wavUrl(SOUNDS[kind]));
+    var p = player.play();
+    return (p && p.then) ? p : Promise.resolve();
+  }
+  function countPlay(p) {
+    return p.then(function () { soundStat.ok++; return true; },
+                  function (e) { soundStat.fail++; soundStat.err = (e && e.name) || '오류'; return false; });
+  }
+  // 버튼을 누른 순간에만 부를 것(기다리는 코드보다 앞에서). 켤 때 '삑' 한 번 = 소리 확인.
+  function unlockSound() {
+    if (!player) { player = new Audio(); player.setAttribute('playsinline', ''); player.preload = 'auto'; }
+    var p = countPlay(playKind('ok'));
+    try {   // 예비용 웹 오디오도 같은 순간에 준비
+      if (!actx) { var AC = window.AudioContext || window.webkitAudioContext; if (AC) actx = new AC(); }
+      if (actx && actx.state !== 'running') actx.resume();
+    } catch (e) { actx = null; }
+    return p;
+  }
+  function webAudioBeep(kind) {
+    if (!actx) return;
     try {
-      var tones = kind === 'shelf' ? [[1200, 0, 0.06], [1600, 0.07, 0.06]] : kind === 'warn' ? [[520, 0, 0.18]] : [[1900, 0, 0.07]];
-      tones.forEach(function (t) {
-        var o = audio.createOscillator(), g = audio.createGain();
-        o.type = 'square'; o.frequency.value = t[0];
-        g.gain.value = 0.06;
-        o.connect(g); g.connect(audio.destination);
-        var at = audio.currentTime + t[1];
+      if (actx.state !== 'running') actx.resume();
+      SOUNDS[kind].forEach(function (t) {
+        var o = actx.createOscillator(), g = actx.createGain();
+        o.type = 'square'; o.frequency.value = t[0]; g.gain.value = 0.25;
+        o.connect(g); g.connect(actx.destination);
+        var at = actx.currentTime + t[1];
         o.start(at); o.stop(at + t[2]);
       });
-    } catch (e) { /* 소리 실패는 무시 */ }
+    } catch (e) { /* 무시 */ }
   }
+  function beep(kind) {
+    if (navigator.vibrate) { try { navigator.vibrate(kind === 'warn' ? [60, 60, 60] : 50); } catch (e) { /* 무시 */ } }
+    if (!$('opt-sound').checked) return;
+    countPlay(playKind(kind)).then(function (ok) { if (!ok) webAudioBeep(kind); });
+  }
+  $('btn-sound-test').addEventListener('click', function () {
+    if (!$('opt-sound').checked) $('opt-sound').checked = true;
+    unlockSound().then(function (ok) {
+      status(ok ? '"삑" 소리가 들렸나요? 안 들리면 폰 음량 버튼(미디어 음량)을 올려 주세요.'
+                : '소리를 틀지 못했습니다(' + soundStat.err + '). 다시 한 번 눌러 보고, 안 되면 "결과 복사"로 보내 주세요.', ok ? 'ok' : 'bad');
+    });
+  });
+  $('opt-sound').addEventListener('change', function () { if (this.checked) unlockSound(); });
   var flashTimer = null;
   function flash(kind) {
     var f = $('flash');
@@ -133,10 +197,6 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { status('이 브라우저는 카메라를 지원하지 않습니다. 최신 크롬이나 사파리로 열어 주세요.', 'bad'); return; }
     var ok = await C.initEngine(VENDOR);
     if (!ok) { status('읽기 엔진을 쓸 수 없습니다.', 'bad'); return; }
-    try {
-      if (!audio) { var AC = window.AudioContext || window.webkitAudioContext; if (AC) audio = new AC(); }
-      if (audio && audio.state === 'suspended') audio.resume();
-    } catch (e) { audio = null; }
     status('카메라 켜는 중…');
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -181,7 +241,8 @@
     $('btn-torch').hidden = true;
     status(msg || '멈춤');
   }
-  $('btn-start').addEventListener('click', start);
+  // 소리 준비는 반드시 start()의 기다림(await)보다 먼저, 누른 그 순간에
+  $('btn-start').addEventListener('click', function () { if ($('opt-sound').checked) unlockSound(); start(); });
   $('btn-stop').addEventListener('click', function () { stop(); });
   $('btn-torch').addEventListener('click', function () {
     if (!stream) return;
@@ -336,6 +397,7 @@
     var secs = S.firstScan ? (S.lastScan - S.firstScan) / 1000 : 0;
     L.push('읽은 횟수 ' + items.length + ' · 첫 번째~마지막 ' + secs.toFixed(1) + '초' + (items.length > 1 ? ' · 1개당 평균 ' + (secs / (items.length - 1)).toFixed(1) + '초' : ''));
     L.push('화면 읽기 ' + S.frames + '번 · 1번에 평균 ' + (S.frames ? Math.round(S.decodeMs / S.frames) : 0) + 'ms');
+    L.push('소리: ' + ($('opt-sound').checked ? '켜짐' : '꺼짐') + ' · 재생 성공 ' + soundStat.ok + '번 / 실패 ' + soundStat.fail + '번' + (soundStat.err ? ' (마지막 오류 ' + soundStat.err + ')' : ''));
     L.push('');
     L.push('■ 선반별');
     Object.keys(S.counts).forEach(function (sk) {
@@ -364,7 +426,9 @@
                events: S.events.map(function (e) { return { raw: e.raw, kind: e.kind, shelf: e.shelf, code: e.item ? e.item.code : null, removed: !!e.removed, mismatch: !!e.mismatch }; }),
                counts: Object.keys(S.counts).reduce(function (o, sk) { o[sk] = {}; Object.keys(S.counts[sk]).forEach(function (k) { o[sk][k] = S.counts[sk][k].n; }); return o; }, {}) };
     },
-    stop: function () { stop(); }
+    stop: function () { stop(); },
+    sound: function () { return { ok: soundStat.ok, fail: soundStat.fail, err: soundStat.err, src: player ? player.src.slice(0, 5) : '' }; },
+    beep: function (k) { beep(k); }
   };
   renderAll();
 })();
