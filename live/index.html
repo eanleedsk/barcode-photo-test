@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<!-- 카메라 화면·목록을 밖으로 보내지 못하도록 브라우저 차원에서 막는다(같은 주소로의 요청만 허용). -->
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'self'">
+<title>연속 스캔 시험</title>
+<link rel="stylesheet" href="../shared/style.css">
+</head>
+<body>
+<header>
+  <a class="back" href="../">← 시험 첫 화면</a>
+  <h1>연속 스캔 시험</h1>
+  <p>카메라를 켜 두고 라벨을 비추기만 하면 버튼 없이 계속 읽습니다.</p>
+</header>
+
+<main class="wrap">
+  <section class="card" aria-labelledby="h-cam">
+    <h2 class="h2" id="h-cam">카메라</h2>
+    <div class="video-box">
+      <video id="vid" playsinline muted autoplay></video>
+      <div class="aim" aria-hidden="true"></div>
+      <div class="flash" id="flash" aria-hidden="true"></div>
+      <div class="idle" id="idle">아래 "카메라 켜기"를 눌러 주세요</div>
+    </div>
+    <button class="btn primary" id="btn-start" type="button" style="margin-top:10px">▶ 카메라 켜기</button>
+    <div class="row">
+      <button class="small-btn" id="btn-stop" type="button" disabled>⏸ 멈춤</button>
+      <button class="small-btn" id="btn-torch" type="button" hidden>🔦 손전등</button>
+      <button class="small-btn" id="btn-reset" type="button" style="margin-left:auto">처음부터</button>
+    </div>
+    <label class="check"><input type="checkbox" id="opt-sound" checked> 소리 내기</label>
+    <p class="status" id="cam-status" role="status">읽기 엔진 준비 중…</p>
+    <div class="shelf-now">현재 선반: <b id="shelf">없음</b><br><span style="font-size:13px">선반 QR을 먼저 비추면, 다음에 읽는 물건을 그 선반으로 묶어 셉니다.</span></div>
+    <div class="last-scan" id="last" aria-live="polite"><div class="m">아직 읽은 것이 없습니다.</div></div>
+    <div class="counters">
+      <div class="stat"><b id="n-scan">0</b><span>읽은 횟수</span></div>
+      <div class="stat"><b id="n-kind">0</b><span>물건 종류</span></div>
+      <div class="stat"><b id="n-rate">–</b><span>1분당 개수</span></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h-shelf">
+    <h2 class="h2" id="h-shelf">선반별 집계</h2>
+    <div id="by-shelf"><p class="note">아직 없습니다.</p></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-log">
+    <h2 class="h2" id="h-log">읽은 순서</h2>
+    <ol class="log" id="log"></ol>
+  </section>
+
+  <section class="card" aria-labelledby="h-how">
+    <h2 class="h2" id="h-how">사용법·시험 방법</h2>
+    <ul class="tips">
+      <li>라벨을 네모 칸 안에 비추면 "삑" 소리와 함께 하나 셉니다.</li>
+      <li>계속 비추고 있으면 한 번만 셉니다. 같은 물건이 여러 개면, 하나 비추고 → 화면에서 잠깐 뺐다가 → 다음 걸 비추세요.</li>
+      <li>시험: 라벨 10개를 순서대로 비추고, 걸린 시간과 잘못 읽은 것이 있는지 "결과 복사"로 보내 주세요.</li>
+    </ul>
+    <div class="row"><button class="small-btn" id="btn-copy" type="button">결과 복사 (시험 결과 보내기용)</button></div>
+    <p class="status" id="copy-status" role="status"></p>
+  </section>
+
+  <div id="list-loader"></div>
+
+  <footer>
+    <div id="foot-engine"></div>
+    <div id="foot-device"></div>
+  </footer>
+</main>
+
+<script src="../vendor/reader.iife.js"></script>
+<script src="../shared/scan_core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = window.KtsCore, $ = C.$, E = C.el;
+  var VENDOR = '../vendor/';
+  var GAP_MS = 1200;          // 같은 바코드가 이 시간 이상 안 보였다가 다시 보이면 새로 센다
+  var SERIAL_WINDOW_MS = 3000;
+  var MAX_SIDE = 1280;        // 카메라 화면을 이 크기로 줄여서 읽음(속도)
+
+  var list = C.getList(), index = list ? C.makeIndex(list.items) : null;
+  var vid = $('vid'), canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d', { willReadFrequently: true });
+  var stream = null, running = false, busy = false, timer = null, audio = null, torchOn = false;
+  var S;   // 시험 기록
+
+  function resetStats() {
+    S = { startedAt: Date.now(), firstScan: 0, lastScan: 0, frames: 0, decodeMs: 0, events: [], lastSeen: {}, recentSerials: {},
+          counts: {}, shelf: '', res: '' };
+  }
+  resetStats();
+
+  $('foot-device').textContent = '기기: ' + C.deviceText();
+  C.mountListLoader($('list-loader'), function (l) { list = l; index = l ? C.makeIndex(l.items) : null; renderAll(); });
+  C.initEngine(VENDOR).then(function (ok) {
+    $('foot-engine').textContent = C.engineText();
+    status(ok ? '준비됨. "카메라 켜기"를 눌러 주세요.' : '이 브라우저에서는 읽기 엔진을 쓸 수 없습니다. 최신 크롬이나 사파리로 열어 주세요.', ok ? '' : 'bad');
+  });
+
+  function status(msg, cls) { var s = $('cam-status'); s.textContent = msg; s.className = 'status ' + (cls || ''); }
+
+  /* ---------- 소리·진동·번쩍임 ---------- */
+  function beep(kind) {
+    if (navigator.vibrate) { try { navigator.vibrate(kind === 'warn' ? [60, 60, 60] : 50); } catch (e) { /* 무시 */ } }
+    if (!audio || !$('opt-sound').checked) return;
+    try {
+      var tones = kind === 'shelf' ? [[1200, 0, 0.06], [1600, 0.07, 0.06]] : kind === 'warn' ? [[520, 0, 0.18]] : [[1900, 0, 0.07]];
+      tones.forEach(function (t) {
+        var o = audio.createOscillator(), g = audio.createGain();
+        o.type = 'square'; o.frequency.value = t[0];
+        g.gain.value = 0.06;
+        o.connect(g); g.connect(audio.destination);
+        var at = audio.currentTime + t[1];
+        o.start(at); o.stop(at + t[2]);
+      });
+    } catch (e) { /* 소리 실패는 무시 */ }
+  }
+  var flashTimer = null;
+  function flash(kind) {
+    var f = $('flash');
+    f.className = 'flash ' + kind;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () { f.className = 'flash'; }, 180);
+  }
+
+  /* ---------- 카메라 ---------- */
+  async function start() {
+    if (!window.isSecureContext) { status('보안 주소(https)로 열어야 카메라를 쓸 수 있습니다.', 'bad'); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { status('이 브라우저는 카메라를 지원하지 않습니다. 최신 크롬이나 사파리로 열어 주세요.', 'bad'); return; }
+    var ok = await C.initEngine(VENDOR);
+    if (!ok) { status('읽기 엔진을 쓸 수 없습니다.', 'bad'); return; }
+    try {
+      if (!audio) { var AC = window.AudioContext || window.webkitAudioContext; if (AC) audio = new AC(); }
+      if (audio && audio.state === 'suspended') audio.resume();
+    } catch (e) { audio = null; }
+    status('카메라 켜는 중…');
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+    } catch (e) {
+      var n = e && e.name;
+      status(n === 'NotAllowedError' ? '카메라 권한이 거부됐습니다. 브라우저 설정에서 이 사이트의 카메라를 허용한 뒤 새로고침해 주세요.'
+        : n === 'NotFoundError' ? '카메라를 찾을 수 없습니다.'
+        : n === 'NotReadableError' ? '다른 앱이 카메라를 쓰고 있습니다. 다른 앱을 닫고 다시 눌러 주세요.'
+        : '카메라를 켜지 못했습니다.', 'bad');
+      return;
+    }
+    vid.srcObject = stream;
+    try { await vid.play(); } catch (e) { /* 자동 재생 실패 시에도 아래에서 계속 */ }
+    var track = stream.getVideoTracks()[0];
+    try {   // 지원하는 폰(주로 안드로이드)에서 연속 초점 요청
+      var caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      $('btn-torch').hidden = !caps.torch;
+    } catch (e) { /* 무시 */ }
+    $('idle').hidden = true;
+    $('btn-start').disabled = true;
+    $('btn-stop').disabled = false;
+    running = true;
+    var st = track.getSettings ? track.getSettings() : {};
+    S.res = (st.width || vid.videoWidth) + '×' + (st.height || vid.videoHeight);
+    status('읽는 중… 라벨을 네모 칸 안에 비춰 주세요.', 'ok');
+    loop();
+  }
+  function stop(msg) {
+    running = false;
+    clearTimeout(timer);
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    vid.srcObject = null;
+    torchOn = false;
+    $('idle').hidden = false;
+    $('idle').textContent = msg || '멈췄습니다. "카메라 켜기"를 누르면 이어서 읽습니다.';
+    $('btn-start').disabled = false;
+    $('btn-stop').disabled = true;
+    $('btn-torch').hidden = true;
+    status(msg || '멈춤');
+  }
+  $('btn-start').addEventListener('click', start);
+  $('btn-stop').addEventListener('click', function () { stop(); });
+  $('btn-torch').addEventListener('click', function () {
+    if (!stream) return;
+    var track = stream.getVideoTracks()[0];
+    torchOn = !torchOn;
+    track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(function () { torchOn = false; });
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && running) stop('다른 화면으로 넘어가서 카메라를 껐습니다. "카메라 켜기"를 누르면 이어서 읽습니다.');
+  });
+  $('btn-reset').addEventListener('click', function () { resetStats(); renderAll(); $('copy-status').textContent = ''; });
+
+  /* ---------- 화면을 계속 읽기 ---------- */
+  async function loop() {
+    if (!running) return;
+    if (!busy && vid.readyState >= 2 && vid.videoWidth) {
+      busy = true;
+      try {
+        var vw = vid.videoWidth, vh = vid.videoHeight, s = Math.min(1, MAX_SIDE / Math.max(vw, vh));
+        var w = Math.round(vw * s), h = Math.round(vh * s);
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+        ctx.drawImage(vid, 0, 0, w, h);
+        var id = ctx.getImageData(0, 0, w, h);
+        var t0 = performance.now();
+        var res = await C.decodeFrame(id);
+        S.frames++; S.decodeMs += performance.now() - t0;
+        handle(res);
+      } catch (e) { /* 한 장 실패는 무시하고 계속 */ }
+      busy = false;
+    }
+    timer = setTimeout(loop, 40);
+  }
+
+  function handle(res) {
+    var now = Date.now();
+    var texts = [];
+    res.forEach(function (r) { if (texts.indexOf(r.text) < 0) texts.push(r.text); });
+    texts.forEach(function (t) { var i = C.interpret(t); if (i.serial) S.recentSerials[i.serial] = now; });
+    texts.forEach(function (t) {
+      var fresh = !(S.lastSeen[t] && now - S.lastSeen[t] < GAP_MS);
+      S.lastSeen[t] = now;
+      if (fresh) onNew(t, res.filter(function (r) { return r.text === t; })[0].format, now);
+    });
+  }
+
+  function itemKey(ev) { return ev.item ? 'I:' + C.normCode(ev.item.code) : 'U:' + ev.lk; }
+  function addCount(ev, d) {
+    var sk = ev.shelf || '(선반 없음)';
+    var g = S.counts[sk] || (S.counts[sk] = {});
+    var k = itemKey(ev);
+    var c = g[k] || (g[k] = { n: 0, ev: ev });
+    c.n += d;
+    if (c.n <= 0) delete g[k];
+  }
+
+  function onNew(text, format, now) {
+    var info = C.interpret(text);
+    if (info.type === 'location') {
+      S.shelf = info.loc;
+      S.events.push({ t: now, raw: text, format: format, kind: 'shelf', shelf: info.loc });
+      beep('shelf'); flash('shelf');
+      renderAll();
+      return;
+    }
+    var res = index ? C.resolve(text, info, index, C.getAliases()) : null;
+    // 같은 라벨의 시리얼 바코드(네모)는 따로 세지 않는다
+    if (!res && S.recentSerials[text] && now - S.recentSerials[text] < SERIAL_WINDOW_MS) return;
+    // 반대로 시리얼 바코드를 먼저 읽고 나서 제조사 라벨(막대)을 읽은 경우: 앞서 센 시리얼 쪽을 취소
+    if (info.serial) {
+      for (var i = S.events.length - 1; i >= 0; i--) {
+        var pe = S.events[i];
+        if (now - pe.t > SERIAL_WINDOW_MS) break;
+        if (pe.kind === 'item' && !pe.removed && !pe.item && pe.raw === info.serial) { pe.removed = true; addCount(pe, -1); }
+      }
+    }
+    var ev = { t: now, raw: text, format: format, kind: 'item', info: info, item: res ? res.item : null, via: res ? res.via : '',
+               lk: C.lookupKey(text, info), shelf: S.shelf };
+    if (ev.item && S.shelf && ev.item.loc) ev.mismatch = !C.locMatches(ev.item.loc, S.shelf);
+    if (!S.firstScan) S.firstScan = now;
+    S.lastScan = now;
+    S.events.push(ev);
+    addCount(ev, 1);
+    var warn = ev.mismatch || (index && !ev.item);
+    beep(warn ? 'warn' : 'ok'); flash(warn ? 'warn' : 'ok');
+    renderAll();
+  }
+
+  /* ---------- 그리기 ---------- */
+  function evTitle(ev) { return ev.item ? (ev.item.name || ev.item.code) : ev.raw; }
+  function evMeta(ev) {
+    var m = [];
+    if (ev.item) m.push(ev.item.code + (ev.item.loc ? ' · 전산 위치 ' + ev.item.loc : ' · 전산 위치 없음'));
+    else m.push(ev.info.kind + (index ? ' · 전산 목록에 없음' : ''));
+    if (ev.info && ev.info.serial) m.push('시리얼 ' + ev.info.serial);
+    if (ev.mismatch) m.push('⚠️ 지금 선반(' + ev.shelf + ')과 전산 위치가 다릅니다');
+    return m.join(' · ');
+  }
+  function liveEvents() { return S.events.filter(function (e) { return e.kind === 'item' && !e.removed; }); }
+
+  function renderAll() {
+    $('shelf').textContent = S.shelf || '없음';
+    var items = liveEvents();
+    $('n-scan').textContent = items.length;
+    var kinds = {};
+    items.forEach(function (e) { kinds[itemKey(e)] = 1; });
+    $('n-kind').textContent = Object.keys(kinds).length;
+    var mins = (S.lastScan - S.firstScan) / 60000;
+    $('n-rate').textContent = items.length >= 3 && mins > 0 ? Math.round((items.length - 1) / mins) : '–';
+
+    var last = $('last'); last.textContent = '';
+    var le = S.events[S.events.length - 1];
+    if (le) {
+      if (le.kind === 'shelf') { last.appendChild(E('div', 't', '선반 ' + le.shelf)); last.appendChild(E('div', 'm', '이제부터 읽는 물건은 이 선반으로 셉니다.')); }
+      else { last.appendChild(E('div', 't', (le.removed ? '(취소됨) ' : '') + evTitle(le))); last.appendChild(E('div', 'm', evMeta(le))); }
+    } else last.appendChild(E('div', 'm', '아직 읽은 것이 없습니다.'));
+
+    var bs = $('by-shelf'); bs.textContent = '';
+    var shelves = Object.keys(S.counts).filter(function (k) { return Object.keys(S.counts[k]).length; });
+    shelves.sort(function (a, b) { return C.compareLoc(a === '(선반 없음)' ? '' : a, b === '(선반 없음)' ? '' : b); });
+    if (!shelves.length) bs.appendChild(E('p', 'note', '아직 없습니다.'));
+    shelves.forEach(function (sk) {
+      bs.appendChild(E('h3', 'sub-h', sk));
+      var ul = E('ul', 'att-list');
+      Object.keys(S.counts[sk]).forEach(function (k) {
+        var c = S.counts[sk][k], li = E('li'), d = E('div', 'grow');
+        d.appendChild(E('b', '', evTitle(c.ev) + '  ×' + c.n));
+        d.appendChild(E('span', 'meta', evMeta(c.ev)));
+        li.appendChild(d); ul.appendChild(li);
+      });
+      bs.appendChild(ul);
+    });
+
+    var log = $('log'); log.textContent = '';
+    S.events.slice().reverse().slice(0, 100).forEach(function (ev) {
+      var li = E('li', ev.removed ? 'removed' : '');
+      var when = C.fmtClock(new Date(ev.t));
+      if (ev.kind === 'shelf') li.appendChild(E('b', '', '📍 선반 ' + ev.shelf));
+      else li.appendChild(E('b', '', evTitle(ev)));
+      li.appendChild(E('span', 'meta', when + ' · ' + C.formatLabel(ev.format) + (ev.kind === 'item' ? ' · ' + evMeta(ev) : '') + (ev.removed ? ' · 같은 라벨의 시리얼이라 취소' : '')));
+      log.appendChild(li);
+    });
+  }
+
+  /* ---------- 결과 복사 ---------- */
+  $('btn-copy').addEventListener('click', function () {
+    var items = liveEvents();
+    var L = [];
+    L.push('[연속 스캔 시험 결과]');
+    L.push('기기: ' + C.deviceText());
+    L.push(C.engineText() + ' · 카메라 ' + (S.res || '?') + ' → ' + MAX_SIDE + 'px로 줄여 읽음');
+    L.push('전산 목록: ' + (list ? list.items.length + '개 품목' : '없음'));
+    var secs = S.firstScan ? (S.lastScan - S.firstScan) / 1000 : 0;
+    L.push('읽은 횟수 ' + items.length + ' · 첫 번째~마지막 ' + secs.toFixed(1) + '초' + (items.length > 1 ? ' · 1개당 평균 ' + (secs / (items.length - 1)).toFixed(1) + '초' : ''));
+    L.push('화면 읽기 ' + S.frames + '번 · 1번에 평균 ' + (S.frames ? Math.round(S.decodeMs / S.frames) : 0) + 'ms');
+    L.push('');
+    L.push('■ 선반별');
+    Object.keys(S.counts).forEach(function (sk) {
+      var g = S.counts[sk], ks = Object.keys(g);
+      if (!ks.length) return;
+      L.push(sk);
+      ks.forEach(function (k) { var c = g[k]; L.push('   - ' + evTitle(c.ev) + (c.ev.item ? ' (' + c.ev.item.code + ')' : '') + ' ×' + c.n + (c.ev.mismatch ? ' ※전산 위치 다름' : '')); });
+    });
+    L.push('');
+    L.push('■ 읽은 순서 (시작부터 초)');
+    var base = S.events.length ? S.events[0].t : 0;
+    S.events.forEach(function (ev) {
+      L.push(((ev.t - base) / 1000).toFixed(1) + 's ' + (ev.kind === 'shelf' ? '선반 ' + ev.shelf : ev.raw + ' | ' + ev.format + (ev.item ? ' | ' + ev.item.code : ' | 목록에 없음')) + (ev.removed ? ' (취소)' : '') + (ev.mismatch ? ' (위치 다름)' : ''));
+    });
+    C.copyText(L.join('\n')).then(function (ok) {
+      var st = $('copy-status');
+      st.textContent = ok ? '복사했습니다. 메신저나 메모에 붙여넣어 보내 주세요.' : '복사하지 못했습니다. 화면을 캡처해서 보내 주세요.';
+      st.className = 'status ' + (ok ? 'ok' : 'bad');
+    });
+  });
+
+  // 시험 자동화용(화면에는 영향 없음)
+  window.__liveTest = {
+    snapshot: function () {
+      return { shelf: S.shelf, frames: S.frames, avgMs: S.frames ? S.decodeMs / S.frames : 0,
+               events: S.events.map(function (e) { return { raw: e.raw, kind: e.kind, shelf: e.shelf, code: e.item ? e.item.code : null, removed: !!e.removed, mismatch: !!e.mismatch }; }),
+               counts: Object.keys(S.counts).reduce(function (o, sk) { o[sk] = {}; Object.keys(S.counts[sk]).forEach(function (k) { o[sk][k] = S.counts[sk][k].n; }); return o; }, {}) };
+    },
+    stop: function () { stop(); }
+  };
+  renderAll();
+})();
+</script>
+</body>
+</html>
