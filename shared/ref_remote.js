@@ -22,9 +22,11 @@
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return new TextDecoder('utf-8').decode(bytes);
   }
+  var FLOW_URL_RE = /^https:\/\/[a-z0-9.-]+\.(environment\.api\.powerplatform\.com|logic\.azure\.com)(:443)?\//i;
+  // u: REF 글자 읽기 흐름 주소, k: 접속 키, l: 재고 입출고 기록 흐름 주소(있을 때만)
   function validConf(c) {
-    return c && typeof c.u === 'string' && typeof c.k === 'string' && c.k.length >= 32 &&
-      /^https:\/\/[a-z0-9.-]+\.(environment\.api\.powerplatform\.com|logic\.azure\.com)(:443)?\//i.test(c.u);
+    return c && typeof c.u === 'string' && typeof c.k === 'string' && c.k.length >= 32 && FLOW_URL_RE.test(c.u) &&
+      (c.l === undefined || (typeof c.l === 'string' && FLOW_URL_RE.test(c.l)));
   }
   R.parseSetup = function (text) {   // 설정 링크 전체 또는 '#refocr=' 뒤 부호
     var m = /refocr=([A-Za-z0-9_\-]+)/.exec(String(text || ''));
