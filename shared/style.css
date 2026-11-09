@@ -66,6 +66,10 @@ footer{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
 .stat b{display:block;font-size:22px;line-height:1.2}
 .stat span{font-size:13px;color:var(--muted)}
 
+/* REF 글자 읽기(회사 AI) 설정 칸 */
+.ref-box{margin-top:10px;padding:8px 12px 10px;border:1px dashed var(--line);border-radius:10px;background:var(--bg)}
+.ref-box .check{margin-top:0}
+
 /* 선반 대조 */
 .stats.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .stat.ok b{color:var(--ok)} .stat.warn b{color:var(--warn)} .stat.bad b{color:var(--bad)}
