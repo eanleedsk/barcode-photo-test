@@ -528,6 +528,32 @@
     if (!shelves.length) bs.appendChild(E('p', 'note', '아직 없습니다.'));
     shelves.forEach(function (sk) {
       bs.appendChild(E('h3', 'sub-h', sk));
+      if (list && sk !== '(선반 없음)') {   // 선반 대조: 전산상 이 선반 장비(REF) 중 몇 개를 확인했는지 + 아직 못 찾은 것
+        var expected = list.items.filter(function (it) { return it.loc && C.locMatches(it.loc, sk); });
+        var foundSet = {}, otherSet = {};
+        Object.keys(counts[sk]).forEach(function (k) {
+          var it = counts[sk][k].ev.item;
+          if (!it) return;
+          if (it.loc && C.locMatches(it.loc, sk)) foundSet[C.normCode(it.code)] = true; else otherSet[C.normCode(it.code)] = true;
+        });
+        var missing = expected.filter(function (it) { return !foundSet[C.normCode(it.code)]; })
+          .sort(function (a, b) { return C.compareCode(a.code, b.code); });
+        bs.appendChild(E('p', 'shelf-sum', '선반 대조: 전산상 이 선반 장비 ' + expected.length + '종 중 ' + Object.keys(foundSet).length + '종 확인 · 다른 선반 장비 ' + Object.keys(otherSet).length + '종'));
+        if (missing.length) {
+          var det = E('details', 'missing');
+          det.appendChild(E('summary', '', '? 아직 못 찾은 전산 장비 (' + missing.length + ')'));
+          var mul = E('ul', 'att-list');
+          missing.forEach(function (it) {
+            var li = E('li'), d = E('div', 'grow');
+            d.appendChild(E('b', 'iref', 'REF ' + it.code));
+            if (it.name) d.appendChild(E('span', 'meta', it.name));
+            d.appendChild(E('span', 'meta', '전산 위치 ' + it.loc));
+            li.appendChild(d); mul.appendChild(li);
+          });
+          det.appendChild(mul);
+          bs.appendChild(det);
+        }
+      }
       var ul = E('ul', 'att-list');
       var keys = Object.keys(counts[sk]).sort(function (a, b) {   // REF 번호 순, 'REF 미확인'은 맨 아래
         var ea = counts[sk][a].ev, eb = counts[sk][b].ev;
@@ -575,7 +601,8 @@
     var counts = buildCounts();
     Object.keys(counts).forEach(function (sk) {
       var g = counts[sk], ks = Object.keys(g);
-      L.push(sk);
+      var exp = (list && sk !== '(선반 없음)') ? list.items.filter(function (it) { return it.loc && C.locMatches(it.loc, sk); }).length : 0;
+      L.push(sk + (exp ? ' (전산상 이 선반 장비 ' + exp + '종)' : ''));
       ks.forEach(function (k) { var c = g[k]; L.push('   - ' + evTitle(c.ev) + ' ×' + c.n + ' | ' + evName(c.ev) + (c.ev.mismatch ? ' ※전산 위치 다름' : '')); });
     });
     L.push('');
