@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<!-- 사진·목록을 밖으로 보내지 못하도록 브라우저 차원에서 막는다(같은 주소로의 요청만 허용). -->
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self'; img-src 'self' data: blob:; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'self'">
+<title>사진 선반 안내 시험</title>
+<link rel="stylesheet" href="../shared/style.css">
+</head>
+<body>
+<header>
+  <a class="back" href="../">← 시험 첫 화면</a>
+  <h1>사진 여러 장 → 선반 안내 (시험)</h1>
+  <p>정리할 물건 사진을 여러 장 고르면, 어느 선반에 넣을지 선반 순서대로 알려 줍니다.</p>
+</header>
+
+<main class="wrap">
+  <div id="list-loader"></div>
+
+  <section class="card" aria-labelledby="h-photo">
+    <h2 class="h2" id="h-photo">정리할 물건 사진</h2>
+    <label class="btn primary" for="pick" id="btn-pick" role="button">🖼️ 앨범에서 사진 여러 장 고르기</label>
+    <label class="btn ghost" for="cam" id="btn-cam" role="button">📷 지금 한 장 찍기</label>
+    <input class="sr" id="pick" type="file" accept="image/*" multiple aria-label="앨범에서 사진 여러 장 고르기">
+    <input class="sr" id="cam" type="file" accept="image/*" capture="environment" aria-label="지금 한 장 찍기">
+    <div class="row">
+      <label for="mode" style="font-size:15px">읽기 방식</label>
+      <select id="mode">
+        <option value="thorough">꼼꼼히 (기본)</option>
+        <option value="fast">빠르게</option>
+      </select>
+      <button class="small-btn" id="btn-reset" type="button" style="margin-left:auto">새로 시작</button>
+    </div>
+    <div class="progress" id="progress" hidden>
+      <div class="bar"><i id="bar"></i></div>
+      <p class="status" id="prog-text" role="status"></p>
+    </div>
+    <p class="status" id="engine" role="status">읽기 엔진 준비 중…</p>
+    <ul class="tips">
+      <li>라벨(바코드)이 보이게 가까이 찍어 주세요. 한 장에 여러 개가 들어가도 됩니다.</li>
+      <li>물건이 많으면 카메라 앱으로 먼저 쭉 찍은 뒤, 여기서 한 번에 고르면 빠릅니다.</li>
+    </ul>
+    <p class="note"><b>개인정보·보안:</b> 사진은 이 폰 안에서만 읽고 저장하거나 전송하지 않습니다. (라벨에 거래처 이름이 있어도 바코드 글자만 씁니다.)</p>
+  </section>
+
+  <section class="card" id="sum-card" hidden aria-labelledby="h-sum">
+    <h2 class="h2" id="h-sum">요약</h2>
+    <div class="stats" id="stats"></div>
+    <p class="status" id="sum-note"></p>
+    <div class="row">
+      <button class="small-btn" id="btn-copy" type="button">결과 복사 (시험 결과 보내기용)</button>
+    </div>
+    <p class="status" id="copy-status" role="status"></p>
+  </section>
+
+  <div id="guide" aria-live="polite"></div>
+  <div id="attention"></div>
+
+  <section class="card" id="photos-card" hidden>
+    <details id="photos-det">
+      <summary>사진별 읽기 결과 보기</summary>
+      <div id="photos"></div>
+    </details>
+  </section>
+
+  <input class="sr" id="verify-cam" type="file" accept="image/*" capture="environment" aria-label="선반 QR 찍기">
+
+  <footer>
+    <div id="foot-engine"></div>
+    <div id="foot-device"></div>
+  </footer>
+</main>
+
+<script src="../vendor/reader.iife.js"></script>
+<script src="../shared/scan_core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = window.KtsCore, $ = C.$, E = C.el;
+  var VENDOR = '../vendor/';
+
+  var state = { photos: [], done: {}, verify: {}, mode: 'thorough' };
+  var list = C.getList();
+  var queue = Promise.resolve();
+  var total = 0, processed = 0, photoNo = 0, busy = false;
+  var verifyTarget = null;
+  var lastModel = null;
+
+  /* ---------- 준비 ---------- */
+  $('foot-device').textContent = '기기: ' + C.deviceText();
+  C.initEngine(VENDOR).then(function (ok) {
+    var e = $('engine');
+    e.textContent = ok ? '읽기 엔진 준비됨 ✅' : '이 브라우저에서는 읽기 엔진을 쓸 수 없습니다. 최신 크롬이나 사파리로 열어 주세요.';
+    e.className = 'status ' + (ok ? 'ok' : 'bad');
+    $('foot-engine').textContent = C.engineText();
+  });
+  C.mountListLoader($('list-loader'), function (l) { list = l; render(); });
+  $('mode').addEventListener('change', function () { state.mode = this.value; });
+
+  /* ---------- 사진 고르기 ---------- */
+  function setBusy(b) {
+    busy = b;
+    ['btn-pick', 'btn-cam'].forEach(function (id) { $(id).setAttribute('aria-disabled', b ? 'true' : 'false'); });
+    $('btn-reset').disabled = b;
+  }
+  function setProgress(stepI, stepN) {
+    var p = $('progress');
+    if (processed >= total) { p.hidden = true; return; }
+    p.hidden = false;
+    var frac = (processed + (stepN ? stepI / stepN : 0)) / total;
+    $('bar').style.width = Math.round(frac * 100) + '%';
+    $('prog-text').textContent = '사진 ' + (processed + 1) + '/' + total + ' 읽는 중…' + (stepN ? ' (방법 ' + (stepI + 1) + '/' + stepN + ')' : '');
+  }
+
+  async function processFile(file) {
+    var no = ++photoNo;
+    var rec = { no: no, name: file.name || ('사진 ' + no), codes: null, log: [], error: '', secs: 0, W: 0, H: 0, thumb: '', done: false };
+    state.photos.push(rec);
+    var ok = await C.initEngine(VENDOR);
+    if (!ok) { rec.error = '읽기 엔진을 쓸 수 없음'; rec.done = true; return; }
+    var t0 = performance.now(), loaded = null;
+    try {
+      loaded = await C.loadImage(file);
+      rec.thumb = C.thumbOf(loaded.img, 120);
+      var r = await C.decodePhoto(loaded.img, state.mode, setProgress);
+      rec.codes = r.codes; rec.log = r.log; rec.W = r.W; rec.H = r.H;
+    } catch (e) {
+      rec.error = (e && e.message) ? e.message : '읽는 중 오류';
+    } finally {
+      if (loaded) URL.revokeObjectURL(loaded.url);
+    }
+    rec.secs = (performance.now() - t0) / 1000;
+    rec.done = true;
+  }
+
+  function onPick(ev) {
+    var input = ev.target;
+    var files = Array.prototype.slice.call(input.files || []);
+    input.value = '';                                  // 같은 사진을 다시 골라도 반응하도록 비움
+    if (!files.length) return;
+    total += files.length;
+    setBusy(true);
+    setProgress(0, 0);
+    files.forEach(function (f) {
+      queue = queue.then(function () { return processFile(f); })
+        .catch(function () { /* 한 장이 실패해도 다음 장은 계속 */ })
+        .then(function () { processed++; setProgress(0, 0); render(); if (processed >= total) setBusy(false); });
+    });
+  }
+  $('pick').addEventListener('change', onPick);
+  $('cam').addEventListener('change', onPick);
+
+  $('btn-reset').addEventListener('click', function () {
+    if (busy) return;
+    state.photos = []; state.done = {}; state.verify = {};
+    total = processed = photoNo = 0;
+    $('copy-status').textContent = '';
+    render();
+  });
+
+  /* ---------- 분석: 사진에서 읽은 바코드 → 전산 품목 → 선반 ---------- */
+  var suggestCache = { list: null, map: null };
+  function suggestFor(item) {
+    if (!list || !item.group) return null;
+    if (suggestCache.list !== list) {
+      var m = {};
+      list.items.forEach(function (it) {
+        if (!it.group || !it.loc) return;
+        var first = C.splitLocs(it.loc)[0];
+        if (!first) return;
+        var g = m[it.group] || (m[it.group] = {});
+        g[first] = (g[first] || 0) + 1;
+      });
+      suggestCache = { list: list, map: m };
+    }
+    var g = suggestCache.map[item.group];
+    if (!g) return null;
+    var best = null, n = 0;
+    Object.keys(g).forEach(function (k) { if (g[k] > n || (g[k] === n && C.compareLoc(k, best) < 0)) { best = k; n = g[k]; } });
+    return best ? { loc: best, n: n } : null;
+  }
+
+  function analyze() {
+    var index = list ? C.makeIndex(list.items) : null;
+    var aliases = C.getAliases();
+    var agg = {}, order = [];
+    var stat = { photos: state.photos.length, donePhotos: 0, okPhotos: 0, secs: 0, failed: [], serialSkips: 0 };
+
+    state.photos.forEach(function (p) {
+      if (!p.done) return;
+      stat.donePhotos++;
+      stat.secs += p.secs;
+      p.locs = []; p.used = 0;
+      if (p.error || !p.codes) { stat.failed.push(p); return; }
+      var infos = p.codes.map(function (c) { return { c: c, info: C.interpret(c.text) }; });
+      var serials = {};
+      infos.forEach(function (x) { if (x.info.serial) serials[x.info.serial] = true; });
+      infos.forEach(function (x) {
+        var c = x.c, info = x.info;
+        if (info.type === 'location') { p.locs.push(info.loc); return; }
+        var res = index ? C.resolve(c.text, info, index, aliases) : null;
+        if (!res && serials[c.text]) { stat.serialSkips++; return; }      // 같은 라벨의 시리얼 바코드 → 따로 세지 않음
+        var lk = C.lookupKey(c.text, info);
+        var key = res ? 'I:' + C.normCode(res.item.code) : 'U:' + lk;
+        var a = agg[key];
+        if (!a) {
+          a = agg[key] = { key: key, item: res ? res.item : null, raw: c.text, info: info, format: c.format, lk: lk,
+                           photos: {}, serials: {}, noSerial: 0, noSerialPhotos: {}, aliasFrom: {} };
+          order.push(key);
+        }
+        if (res && res.via === 'alias') a.aliasFrom[res.from] = true;   // 사람이 연결해 둔 번호로 찾은 경우(여러 번호일 수 있음)
+        a.photos[p.no] = (a.photos[p.no] || 0) + 1;
+        if (info.serial) a.serials[info.serial] = true;
+        else { a.noSerial++; a.noSerialPhotos[p.no] = true; }
+        p.used++;
+      });
+      if (p.used) stat.okPhotos++; else stat.failed.push(p);
+    });
+
+    var groups = {}, gorder = [], noLoc = [], unknown = [], qtyTotal = 0;
+    order.forEach(function (k) {
+      var a = agg[k];
+      a.qty = Object.keys(a.serials).length + a.noSerial;
+      a.photoList = Object.keys(a.photos).map(Number).sort(function (x, y) { return x - y; });
+      a.multiPhoto = Object.keys(a.noSerialPhotos).length > 1;
+      qtyTotal += a.qty;
+      if (!a.item) { unknown.push(a); return; }
+      var loc = (a.item.loc || '').trim();
+      if (!loc) { a.suggest = suggestFor(a.item); noLoc.push(a); return; }
+      var gk = C.normLoc(loc);
+      if (!groups[gk]) { groups[gk] = { key: gk, label: loc, items: [] }; gorder.push(gk); }
+      groups[gk].items.push(a);
+    });
+    gorder.sort(C.compareLoc);
+    var glist = gorder.map(function (k) {
+      var g = groups[k];
+      g.items.sort(function (x, y) { return (x.item.name || '').localeCompare(y.item.name || '', 'ko'); });
+      return g;
+    });
+    var usedAliases = [];
+    order.forEach(function (k) {
+      Object.keys(agg[k].aliasFrom).forEach(function (from) { usedAliases.push({ from: from, item: agg[k].item }); });
+    });
+    return { groups: glist, noLoc: noLoc, unknown: unknown, stat: stat, kinds: order.length, qty: qtyTotal, usedAliases: usedAliases };
+  }
+
+  /* ---------- 그리기 ---------- */
+  function photoText(nums) { return '사진 ' + nums.join(', '); }
+  function serialText(a) {
+    var s = Object.keys(a.serials);
+    if (!s.length) return '';
+    return ' · 시리얼 ' + (s.length > 3 ? s.slice(0, 3).join(', ') + ' 외 ' + (s.length - 3) + '개' : s.join(', '));
+  }
+
+  function render() {
+    var m = analyze();
+    lastModel = m;
+    var has = state.photos.length > 0;
+    $('sum-card').hidden = !has;
+    $('photos-card').hidden = !has;
+    var guide = $('guide'), att = $('attention');
+    guide.textContent = ''; att.textContent = '';
+    if (!has) return;
+
+    // 요약
+    var stats = $('stats'); stats.textContent = '';
+    [[m.stat.okPhotos + ' / ' + m.stat.donePhotos, '라벨 읽힌 사진'],
+     [m.qty + '개', '물건 (' + m.kinds + '종류)'],
+     [m.groups.length + '곳', '넣을 선반'],
+     [(m.noLoc.length + m.unknown.length + m.stat.failed.length) + '건', '확인 필요']].forEach(function (s) {
+      var d = E('div', 'stat'); d.appendChild(E('b', '', s[0])); d.appendChild(E('span', '', s[1])); stats.appendChild(d);
+    });
+    var avg = m.stat.donePhotos ? (m.stat.secs / m.stat.donePhotos) : 0;
+    var note = m.stat.donePhotos ? '사진 한 장 읽는 데 평균 ' + avg.toFixed(1) + '초' : '';
+    if (!list) note = '⚠️ 전산 목록이 없어서 선반을 알려 드릴 수 없습니다. 위에서 목록을 불러오면 바로 안내가 나옵니다.';
+    $('sum-note').textContent = note;
+    $('sum-note').className = 'status ' + (list ? '' : 'warn');
+
+    // 선반별 안내(창고 도는 순서)
+    m.groups.forEach(function (g, gi) {
+      var card = E('section', 'card loc-card');
+      var allDone = g.items.every(function (a) { return state.done[g.key + '|' + a.key]; });
+      if (allDone) card.className += ' done';
+      var head = E('div', 'loc-head');
+      head.appendChild(E('span', 'loc-no', allDone ? '✓' : String(gi + 1)));
+      head.appendChild(E('span', 'loc-name', g.label));
+      var cnt = g.items.reduce(function (s, a) { return s + a.qty; }, 0);
+      head.appendChild(E('span', 'loc-count', cnt + '개' + (allDone ? ' · 다 넣음' : '')));
+      card.appendChild(head);
+
+      var ul = E('ul', 'items');
+      g.items.forEach(function (a) {
+        var li = E('li');
+        var dk = g.key + '|' + a.key;
+        var btn = E('button', 'item-row'); btn.type = 'button';
+        btn.setAttribute('aria-pressed', state.done[dk] ? 'true' : 'false');
+        btn.appendChild(E('span', 'box', state.done[dk] ? '✓' : ''));
+        var main = E('span', 'item-main');
+        main.appendChild(E('span', 'iname', a.item.name || a.item.code));
+        var codeLine = a.item.code + ' · ' + photoText(a.photoList) + serialText(a);
+        var froms = Object.keys(a.aliasFrom);
+        if (froms.length) codeLine += ' · 연결한 번호 ' + froms.join(', ');
+        main.appendChild(E('span', 'icode', codeLine));
+        btn.appendChild(main);
+        btn.appendChild(E('span', 'qty', '×' + a.qty));
+        btn.addEventListener('click', function () { state.done[dk] = !state.done[dk]; render(); });
+        li.appendChild(btn);
+        if (a.multiPhoto) li.appendChild(E('div', 'warn-box', '여러 사진(' + Object.keys(a.noSerialPhotos).join('·') + ')에 나왔습니다. 같은 물건을 두 번 찍었다면 실제 수량은 더 적습니다.'));
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+
+      var row = E('div', 'row');
+      var vl = E('label', 'small-btn', '📷 선반 QR 찍어서 맞는지 확인');
+      vl.htmlFor = 'verify-cam'; vl.setAttribute('role', 'button');
+      vl.addEventListener('click', function () { verifyTarget = g.key; });
+      row.appendChild(vl);
+      card.appendChild(row);
+      var v = state.verify[g.key];
+      if (v) {
+        var msg, cls;
+        if (v.busy) { msg = '선반 라벨 읽는 중…'; cls = 'wait'; }
+        else if (v.err) { msg = '사진을 읽지 못했습니다. 다시 찍어 주세요.'; cls = 'bad'; }
+        else if (v.ok) { msg = '✅ 맞는 선반입니다 (' + v.locs.join(', ') + ')'; cls = 'ok'; }
+        else if (v.locs.length) { msg = '⚠️ 찍은 선반은 ' + v.locs.join(', ') + ' 입니다. 이 물건들은 ' + g.label + ' 에 넣어야 합니다.'; cls = 'bad'; }
+        else { msg = '선반 라벨(QR)을 찾지 못했습니다. 선반 QR을 가까이 찍어 주세요.'; cls = 'bad'; }
+        card.appendChild(E('p', 'verify-msg ' + cls, msg));
+      }
+      guide.appendChild(card);
+    });
+
+    // 확인 필요
+    var needs = m.noLoc.length + m.unknown.length + m.stat.failed.length + m.usedAliases.length;
+    if (needs) {
+      var ac = E('section', 'card');
+      ac.appendChild(E('h2', 'h2', '확인이 필요한 것'));
+      if (m.noLoc.length) {
+        ac.appendChild(E('h3', 'sub-h', '전산에 위치가 없는 물건 (' + m.noLoc.length + ')'));
+        var ul1 = E('ul', 'att-list');
+        m.noLoc.forEach(function (a) {
+          var li = E('li'), d = E('div', 'grow');
+          d.appendChild(E('b', '', (a.item.name || a.item.code) + '  ×' + a.qty));
+          d.appendChild(E('span', 'meta', a.item.code + ' · ' + photoText(a.photoList)));
+          d.appendChild(E('span', 'meta', a.suggest
+            ? '후보: ' + a.suggest.loc + ' (같은 제품군 "' + a.item.group + '" 품목이 가장 많은 선반, ' + a.suggest.n + '개) — 정한 뒤 전산 위치도 고쳐 주세요.'
+            : '후보 없음 — 직접 정한 뒤 전산 위치도 고쳐 주세요.'));
+          li.appendChild(d); ul1.appendChild(li);
+        });
+        ac.appendChild(ul1);
+      }
+      if (m.unknown.length) {
+        ac.appendChild(E('h3', 'sub-h', list ? '전산 목록에 없는 번호 (' + m.unknown.length + ')' : '읽은 바코드 (' + m.unknown.length + ')'));
+        var ul2 = E('ul', 'att-list');
+        m.unknown.forEach(function (a) {
+          var li = E('li'), d = E('div', 'grow');
+          d.appendChild(E('b', 'code-line', a.raw));
+          var meta = a.info.kind + ' · ' + C.formatLabel(a.format) + ' · ' + photoText(a.photoList) + ' · ' + a.qty + '번';
+          if (a.info.part && a.info.part !== a.raw) meta += ' · 해석한 번호 ' + a.info.part;
+          d.appendChild(E('span', 'meta', meta));
+          if (a.info.type === 'seven') d.appendChild(E('span', 'meta', '시리얼 번호일 수도 있습니다.'));
+          li.appendChild(d);
+          if (list) {
+            var lb = E('button', 'small-btn', '품목 연결'); lb.type = 'button';
+            lb.addEventListener('click', function () { openLink(a); });
+            li.appendChild(lb);
+          }
+          ul2.appendChild(li);
+        });
+        ac.appendChild(ul2);
+      }
+      if (m.stat.failed.length) {
+        ac.appendChild(E('h3', 'sub-h', '물건 라벨을 못 찾은 사진 (' + m.stat.failed.length + ')'));
+        var ul3 = E('ul', 'att-list');
+        m.stat.failed.forEach(function (p) {
+          var li = E('li');
+          if (p.thumb) { var im = E('img', 'thumb'); im.alt = '사진 ' + p.no + ' 미리보기'; im.src = p.thumb; li.appendChild(im); }
+          var d = E('div', 'grow');
+          d.appendChild(E('b', '', '사진 ' + p.no));
+          d.appendChild(E('span', 'meta', p.error ? p.error : (p.locs && p.locs.length ? '선반 라벨(' + p.locs.join(', ') + ')만 읽혔습니다.' : '바코드를 찾지 못했습니다.') + ' 라벨이 보이게 가까이 다시 찍어 주세요.'));
+          li.appendChild(d); ul3.appendChild(li);
+        });
+        ac.appendChild(ul3);
+      }
+      if (m.usedAliases.length) {
+        ac.appendChild(E('h3', 'sub-h', '연결해 둔 번호 (' + m.usedAliases.length + ')'));
+        var ul4 = E('ul', 'att-list');
+        m.usedAliases.forEach(function (a) {
+          var li = E('li'), d = E('div', 'grow');
+          d.appendChild(E('b', '', a.from + ' → ' + a.item.code));
+          d.appendChild(E('span', 'meta', a.item.name || ''));
+          li.appendChild(d);
+          var ub = E('button', 'small-btn', '연결 풀기'); ub.type = 'button';
+          ub.addEventListener('click', function () { C.removeAlias(a.from); render(); });
+          li.appendChild(ub); ul4.appendChild(li);
+        });
+        ac.appendChild(ul4);
+      }
+      att.appendChild(ac);
+    }
+
+    // 사진별 결과
+    var pc = $('photos'); pc.textContent = '';
+    state.photos.slice().reverse().forEach(function (p) {
+      var row = E('div', 'photo-row');
+      if (p.thumb) { var im = E('img', 'thumb'); im.alt = '사진 ' + p.no + ' 미리보기'; im.src = p.thumb; row.appendChild(im); }
+      var d = E('div', 'grow');
+      var head = '사진 ' + p.no + ' · ';
+      if (!p.done) head += '읽는 중…';
+      else if (p.error) head += '❌ ' + p.error;
+      else head += (p.codes.length ? p.codes.length + '개 읽힘' : '못 읽음') + ' · ' + p.secs.toFixed(1) + '초 · ' + p.W + '×' + p.H;
+      d.appendChild(E('b', '', head));
+      (p.codes || []).forEach(function (c) {
+        d.appendChild(E('div', 'code-line', c.text));
+        d.appendChild(E('div', 'meta', C.formatLabel(c.format) + ' · ' + C.interpret(c.text).kind + ' · 처음 읽힌 방법: ' + c.first));
+      });
+      row.appendChild(d);
+      pc.appendChild(row);
+    });
+  }
+
+  /* ---------- 처음 보는 번호 → 전산 품목 연결 ---------- */
+  function openLink(a) {
+    var ov = E('div', 'overlay');
+    ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', '전산 품목과 연결');
+    var sh = E('div', 'sheet');
+    sh.appendChild(E('h2', 'h2', '전산 품목과 연결'));
+    sh.appendChild(E('p', 'note', '바코드 번호 ' + a.lk + ' (' + a.info.kind + ')를 어떤 전산 품목으로 볼까요? 한 번 연결하면 이 폰이 기억해서 다음부터는 바로 안내합니다.'));
+    var q = E('input'); q.type = 'search'; q.placeholder = '품목 이름이나 번호 (예: sleeve, 6693522)';
+    q.setAttribute('aria-label', '품목 찾기'); q.style.marginTop = '10px';
+    sh.appendChild(q);
+    var res = E('div'); res.style.marginTop = '8px';
+    sh.appendChild(res);
+    var cancel = E('button', 'btn ghost', '취소'); cancel.type = 'button'; cancel.style.marginTop = '12px';
+    sh.appendChild(cancel);
+    ov.appendChild(sh);
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    cancel.addEventListener('click', close);
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) close(); });
+    function run() {
+      res.textContent = '';
+      var words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!words.length) { res.appendChild(E('p', 'note', '이름 일부나 번호를 입력하면 후보가 나옵니다.')); return; }
+      var hits = list.items.filter(function (it) {
+        var hay = (it.code + ' ' + it.name + ' ' + it.loc).toLowerCase();
+        return words.every(function (w) { return hay.indexOf(w) >= 0; });
+      }).slice(0, 30);
+      if (!hits.length) { res.appendChild(E('p', 'note', '맞는 품목이 없습니다.')); return; }
+      hits.forEach(function (it) {
+        var b = E('button', 'pick-row'); b.type = 'button';
+        b.appendChild(E('b', '', it.name || it.code));
+        b.appendChild(E('span', '', it.code + ' · ' + (it.loc || '위치 없음')));
+        b.addEventListener('click', function () { C.setAlias(a.lk, it.code); close(); render(); });
+        res.appendChild(b);
+      });
+    }
+    q.addEventListener('input', run);
+    document.body.appendChild(ov);
+    run();
+    q.focus();
+  }
+
+  /* ---------- 선반 QR로 확인 ---------- */
+  $('verify-cam').addEventListener('change', async function (ev) {
+    var f = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    var gk = verifyTarget;
+    if (!f || !gk || !lastModel) return;
+    var g = lastModel.groups.filter(function (x) { return x.key === gk; })[0];
+    if (!g) return;
+    state.verify[gk] = { busy: true };
+    render();
+    var loaded = null;
+    try {
+      await C.initEngine(VENDOR);
+      loaded = await C.loadImage(f);
+      var r = await C.decodePhoto(loaded.img, 'fast');
+      var locs = [];
+      r.codes.forEach(function (c) { var i = C.interpret(c.text); if (i.type === 'location' && locs.indexOf(i.loc) < 0) locs.push(i.loc); });
+      state.verify[gk] = { ok: locs.some(function (l) { return C.locMatches(g.label, l); }), locs: locs };
+    } catch (e) {
+      state.verify[gk] = { err: true };
+    } finally {
+      if (loaded) URL.revokeObjectURL(loaded.url);
+    }
+    render();
+  });
+
+  /* ---------- 결과 복사(시험 결과 보내기용) ---------- */
+  $('btn-copy').addEventListener('click', function () {
+    var m = lastModel || analyze();
+    var L = [];
+    L.push('[사진 선반 안내 시험 결과]');
+    L.push('기기: ' + C.deviceText());
+    L.push(C.engineText() + ' · 읽기 방식: ' + ($('mode').value === 'fast' ? '빠르게' : '꼼꼼히'));
+    L.push('전산 목록: ' + (list ? list.items.length + '개 품목' + (list.sheet ? ' (' + list.sheet + ')' : '') : '없음'));
+    var avg = m.stat.donePhotos ? (m.stat.secs / m.stat.donePhotos).toFixed(1) : '0';
+    L.push('사진 ' + m.stat.donePhotos + '장 · 라벨 읽힌 사진 ' + m.stat.okPhotos + '장 · 평균 ' + avg + '초/장');
+    L.push('물건 ' + m.qty + '개(' + m.kinds + '종류) · 선반 ' + m.groups.length + '곳');
+    L.push('');
+    L.push('■ 선반 안내 (도는 순서)');
+    m.groups.forEach(function (g, i) {
+      L.push((i + 1) + ') ' + g.label);
+      g.items.forEach(function (a) { L.push('   - ' + (a.item.name || '') + ' (' + a.item.code + ') ×' + a.qty + ' [' + photoText(a.photoList) + ']' + (a.multiPhoto ? ' ※여러 사진' : '')); });
+    });
+    if (m.noLoc.length) { L.push(''); L.push('■ 위치 없음'); m.noLoc.forEach(function (a) { L.push('   - ' + a.item.name + ' (' + a.item.code + ')' + (a.suggest ? ' 후보 ' + a.suggest.loc : '')); }); }
+    if (m.unknown.length) { L.push(''); L.push('■ 전산에 없는 번호'); m.unknown.forEach(function (a) { L.push('   - ' + a.raw + ' | ' + a.info.kind + ' | ' + a.format + ' [' + photoText(a.photoList) + ']'); }); }
+    if (m.stat.failed.length) { L.push(''); L.push('■ 라벨 못 찾은 사진: ' + m.stat.failed.map(function (p) { return p.no; }).join(', ')); }
+    L.push('');
+    L.push('■ 사진별');
+    state.photos.forEach(function (p) {
+      L.push('사진 ' + p.no + ' (' + p.W + '×' + p.H + ', ' + p.secs.toFixed(1) + '초): ' + (p.error ? p.error : (p.codes ? p.codes.length : 0) + '개'));
+      (p.codes || []).forEach(function (c) { L.push('   · ' + c.format + ' | ' + c.text + ' | 처음 읽힌 방법: ' + c.first); });
+      var slow = (p.log || []).map(function (x) { return x.tag + ' ' + (x.err ? '오류' : x.n + '개') + ' ' + x.ms + 'ms'; });
+      if (slow.length) L.push('   (방법별: ' + slow.join(' / ') + ')');
+    });
+    C.copyText(L.join('\n')).then(function (ok) {
+      var st = $('copy-status');
+      st.textContent = ok ? '복사했습니다. 메신저나 메모에 붙여넣어 보내 주세요.' : '복사하지 못했습니다. 화면을 캡처해서 보내 주세요.';
+      st.className = 'status ' + (ok ? 'ok' : 'bad');
+    });
+  });
+
+  // 시험 자동화용(화면에는 영향 없음)
+  window.__guideTest = {
+    idle: function () { return queue; },
+    model: function () { return analyze(); },
+    photos: function () {
+      return state.photos.map(function (p) {
+        return { no: p.no, done: p.done, error: p.error, W: p.W, H: p.H, secs: p.secs,
+                 codes: (p.codes || []).map(function (c) { return { text: c.text, format: c.format, first: c.first }; }) };
+      });
+    }
+  };
+  render();
+})();
+</script>
+</body>
+</html>
