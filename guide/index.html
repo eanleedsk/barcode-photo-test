@@ -59,6 +59,7 @@
 
   <div id="guide" aria-live="polite"></div>
   <div id="shelfcheck"></div>
+  <div id="log-box"></div>
   <div id="attention"></div>
 
   <section class="card" id="photos-card" hidden>
@@ -79,13 +80,15 @@
 <script src="../vendor/reader.iife.js"></script>
 <script src="../shared/scan_core.js"></script>
 <script src="../shared/ref_remote.js"></script>
+<script src="../shared/stock_log.js"></script>
 <script>
 (function () {
   'use strict';
-  var C = window.KtsCore, $ = C.$, E = C.el, RO = window.KtsRefOcr;
+  var C = window.KtsCore, $ = C.$, E = C.el, RO = window.KtsRefOcr, LOG = window.KtsStockLog;
+  var logBox = null;
   var VENDOR = '../vendor/';
 
-  var state = { photos: [], done: {}, verify: {}, mode: 'thorough', photoShelf: {} };   // photoShelf: 사진 번호 → 사람이 고른 선반
+  var state = { photos: [], done: {}, verify: {}, mode: 'thorough', photoShelf: {}, sent: {} };   // photoShelf: 사진 번호 → 사람이 고른 선반, sent: REF별 기록 보낸 개수
   var list = C.getList();
   var queue = Promise.resolve();
   var total = 0, processed = 0, photoNo = 0, busy = false;
@@ -183,7 +186,7 @@
 
   $('btn-reset').addEventListener('click', function () {
     if (busy) return;
-    state.photos = []; state.done = {}; state.verify = {}; state.photoShelf = {};
+    state.photos = []; state.done = {}; state.verify = {}; state.photoShelf = {}; state.sent = {};
     total = processed = photoNo = 0;
     $('copy-status').textContent = '';
     render();
@@ -419,6 +422,7 @@
   function render() {
     var m = analyze();
     lastModel = m;
+    if (logBox) logBox.refresh();   // 입출고 기록 칸의 보낼 목록도 새로
     var has = state.photos.length > 0;
     $('sum-card').hidden = !has;
     $('photos-card').hidden = !has;
@@ -722,6 +726,33 @@
       st.textContent = ok ? '복사했습니다. 메신저나 메모에 붙여넣어 보내 주세요.' : '복사하지 못했습니다. 화면을 캡처해서 보내 주세요.';
       st.className = 'status ' + (ok ? 'ok' : 'bad');
     });
+  });
+
+  /* ---------- 입출고 기록(회사 엑셀): 사진에서 찾은 REF별 개수 중 아직 안 보낸 만큼 ---------- */
+  function shelfOfAgg(a) {   // 이 물건이 나온 사진의 선반(사람이 고른 선반 > 선반 QR·글자)
+    for (var i = 0; i < a.photoList.length; i++) {
+      var p = state.photos[a.photoList[i] - 1], sh = p && photoShelfOf(p);
+      if (sh) return sh;
+    }
+    return '';
+  }
+  function getLogItems() {
+    var m = lastModel;
+    if (!m) return { items: [], skipped: 0 };
+    var all = [], out = [];
+    m.groups.forEach(function (g) { g.items.forEach(function (a) { all.push(a); }); });
+    m.noLoc.forEach(function (a) { all.push(a); });
+    all.forEach(function (a) {
+      var rem = a.qty - (state.sent[a.key] || 0);
+      if (rem <= 0) return;
+      out.push({ key: a.key, ref: a.item.code, name: a.item.name || '', qty: rem, shelf: shelfOfAgg(a), loc: a.item.loc || '',
+                 serial: Object.keys(a.serials).join(','), how: a.refSeen ? 'REF 글자' : '바코드' });
+    });
+    return { items: out, skipped: m.unknown.length };
+  }
+  logBox = LOG.mountBox($('log-box'), getLogItems, function (items) {
+    items.forEach(function (it) { state.sent[it.key] = (state.sent[it.key] || 0) + it.qty; });
+    render();
   });
 
   // 시험 자동화용(화면에는 영향 없음)
