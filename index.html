@@ -36,6 +36,7 @@ header p{margin:4px 0 0;font-size:13px;opacity:.85}
 @media (prefers-color-scheme: dark){ .btn.ghost{color:var(--ink);border-color:var(--muted)} }
 .btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
 .btn + .btn{margin-top:10px}
+a.btn{text-decoration:none}
 .status{font-size:14px;color:var(--muted);margin:10px 0 0}
 .status.ok{color:var(--ok)} .status.bad{color:var(--bad)}
 .tips{margin:0;padding-left:18px;color:var(--muted);font-size:14px}
@@ -73,6 +74,12 @@ footer{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
 </header>
 
 <main class="wrap">
+  <nav class="card" aria-labelledby="h-more">
+    <h2 id="h-more" style="margin:0 0 8px;font-size:16px">재고 앱 시험 (새로 추가)</h2>
+    <a class="btn ghost" href="live/">📹 연속 스캔 시험 (카메라 켜 두고 비추기)</a>
+    <a class="btn ghost" href="guide/">🗂️ 사진 여러 장 → 선반 안내 시험</a>
+  </nav>
+
   <section class="card" aria-labelledby="h-how">
     <h2 id="h-how" style="margin:0 0 8px;font-size:16px">사진 찍기</h2>
     <label class="btn primary" for="cam" id="btn-cam" role="button">📷 카메라로 라벨 찍기</label>
