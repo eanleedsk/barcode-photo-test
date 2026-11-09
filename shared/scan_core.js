@@ -314,6 +314,40 @@
     return null;
   };
 
+  /* ============================== REF(제품 코드) 우선 정리 ============================== */
+  // 한 장의 사진(또는 한 번 찍기)에서 읽힌 바코드들을 REF 기준으로 정리한다.
+  //  - 같은 시리얼을 가진 바코드가 여럿이면 = 같은 물건의 라벨들 → REF(전산 제품 코드)로 찾아지는 것 하나만 남긴다
+  //  - 그때 REF로 못 찾은 쪽 번호(예: 제조사 구성품 번호)는 그 REF로 자동 연결할 후보(learned)로 돌려준다
+  //  - 시리얼만 든 바코드(네모)는 따로 세지 않는다
+  // 돌려주는 것: entries[i] = { text, info, res(REF 찾음: {item,via} 또는 null), skip('' | 'sameLabel' | 'serialOnly') }
+  Core.refBatch = function (texts, index, aliases) {
+    var ents = texts.map(function (t) {
+      var info = Core.interpret(t);
+      var res = (index && info.type !== 'location') ? Core.resolve(t, info, index, aliases) : null;
+      return { text: t, info: info, res: res, skip: '' };
+    });
+    var learned = [], bySerial = {}, serialSet = {};
+    ents.forEach(function (e) {
+      if (e.info.serial) { (bySerial[e.info.serial] = bySerial[e.info.serial] || []).push(e); serialSet[e.info.serial] = true; }
+    });
+    Object.keys(bySerial).forEach(function (s) {
+      var g = bySerial[s];
+      if (g.length < 2) return;
+      var keep = g.filter(function (e) { return e.res; })[0] || g[0];
+      g.forEach(function (e) {
+        if (e === keep) return;
+        e.skip = 'sameLabel';
+        if (keep.res && !e.res) learned.push({ from: Core.lookupKey(e.text, e.info), to: keep.res.item.code });
+      });
+    });
+    ents.forEach(function (e) {
+      if (!e.skip && !e.res && e.info.type !== 'location' && serialSet[e.text]) e.skip = 'serialOnly';
+    });
+    return { entries: ents, learned: learned };
+  };
+  // REF 번호 순서(숫자는 숫자로: 644401 < 6346055)
+  Core.compareCode = function (a, b) { return String(a || '').localeCompare(String(b || ''), 'en', { numeric: true }); };
+
   /* ============================== 선반 위치 ============================== */
   Core.normLoc = function (s) {
     return String(s || '').trim().toUpperCase().replace(/\s*-\s*/g, '-').replace(/\s*,\s*/g, ', ').replace(/\s{2,}/g, ' ');
@@ -345,7 +379,7 @@
   };
 
   /* ============================== 저장(목록·번호 연결) ============================== */
-  var LIST_KEY = 'ktsInv.list.v1', ALIAS_KEY = 'ktsInv.alias.v1';
+  var LIST_KEY = 'ktsInv.list.v1', ALIAS_KEY = 'ktsInv.alias.v1', ALIAS_AUTO_KEY = 'ktsInv.aliasAuto.v1', ALIAS_BLOCK_KEY = 'ktsInv.aliasBlock.v1';
   function sget(store, k) { try { return global[store].getItem(k); } catch (e) { return null; } }
   function sset(store, k, v) { try { global[store].setItem(k, v); return true; } catch (e) { return false; } }
   function sdel(store, k) { try { global[store].removeItem(k); } catch (e) { /* 무시 */ } }
@@ -375,15 +409,77 @@
   Core.getAliases = function () {
     try { return JSON.parse(sget('localStorage', ALIAS_KEY) || '{}') || {}; } catch (e) { return {}; }
   };
-  Core.setAlias = function (from, toCode) {
-    var a = Core.getAliases();
-    a[Core.normCode(from)] = Core.normCode(toCode);
+  function getSet(key) { try { return JSON.parse(sget('localStorage', key) || '{}') || {}; } catch (e) { return {}; } }
+  // auto=true: 같은 라벨의 REF 바코드를 보고 자동으로 연결한 것(사람이 연결한 것과 구분해 표시)
+  Core.setAlias = function (from, toCode, auto) {
+    var k = Core.normCode(from), a = Core.getAliases(), s = getSet(ALIAS_AUTO_KEY), b = getSet(ALIAS_BLOCK_KEY);
+    a[k] = Core.normCode(toCode);
+    if (auto) s[k] = true; else { delete s[k]; delete b[k]; }   // 사람이 직접 연결하면 '자동 연결 막음'도 풂
     sset('localStorage', ALIAS_KEY, JSON.stringify(a));
+    sset('localStorage', ALIAS_AUTO_KEY, JSON.stringify(s));
+    sset('localStorage', ALIAS_BLOCK_KEY, JSON.stringify(b));
   };
+  // 아직 연결이 없는 번호만 자동 연결(사람이 직접 연결한 것은 덮어쓰지 않고, 사람이 푼 자동 연결은 다시 잇지 않음). 새로 연결했으면 true
+  Core.learnAliases = function (learned) {
+    var a = Core.getAliases(), b = getSet(ALIAS_BLOCK_KEY), changed = false;
+    (learned || []).forEach(function (l) {
+      var k = Core.normCode(l.from);
+      if (k && !a[k] && !b[k]) { Core.setAlias(k, l.to, true); a[k] = Core.normCode(l.to); changed = true; }
+    });
+    return changed;
+  };
+  Core.isAutoAlias = function (from) { return !!getSet(ALIAS_AUTO_KEY)[Core.normCode(from)]; };
   Core.removeAlias = function (from) {
-    var a = Core.getAliases();
-    delete a[Core.normCode(from)];
+    var k = Core.normCode(from), a = Core.getAliases(), s = getSet(ALIAS_AUTO_KEY), b = getSet(ALIAS_BLOCK_KEY);
+    if (s[k]) b[k] = true;                         // 자동 연결을 사람이 풀었으면 다시 자동으로 잇지 않음
+    delete a[k]; delete s[k];
     sset('localStorage', ALIAS_KEY, JSON.stringify(a));
+    sset('localStorage', ALIAS_AUTO_KEY, JSON.stringify(s));
+    sset('localStorage', ALIAS_BLOCK_KEY, JSON.stringify(b));
+  };
+
+  /* ============================== REF 연결 창(두 화면 공통) ============================== */
+  // 전산에 없는 바코드 번호를 어떤 REF(제품 코드)로 볼지 사람이 한 번 고르면 이 폰이 기억한다.
+  Core.openLinkDialog = function (list, fromKey, kindText, onPicked) {
+    var E = Core.el;
+    var ov = E('div', 'overlay');
+    ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'REF 연결');
+    var sh = E('div', 'sheet');
+    sh.appendChild(E('h2', 'h2', 'REF(제품 코드) 연결'));
+    sh.appendChild(E('p', 'note', '바코드 번호 ' + fromKey + (kindText ? ' (' + kindText + ')' : '') +
+      '는 전산 REF가 아닙니다. 라벨에 적힌 REF 번호나 제품 이름으로 찾아 골라 주세요. 한 번 연결하면 이 폰이 기억합니다.'));
+    var q = E('input'); q.type = 'search'; q.placeholder = 'REF 번호나 제품 이름 (예: 6693522, sleeve)';
+    q.setAttribute('aria-label', 'REF 찾기'); q.style.marginTop = '10px';
+    sh.appendChild(q);
+    var res = E('div'); res.style.marginTop = '8px';
+    sh.appendChild(res);
+    var cancel = E('button', 'btn ghost', '취소'); cancel.type = 'button'; cancel.style.marginTop = '12px';
+    sh.appendChild(cancel);
+    ov.appendChild(sh);
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    cancel.addEventListener('click', close);
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) close(); });
+    function run() {
+      res.textContent = '';
+      var words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!words.length) { res.appendChild(E('p', 'note', 'REF 번호 일부나 제품 이름을 입력하면 후보가 나옵니다.')); return; }
+      var hits = list.items.filter(function (it) {
+        var hay = (it.code + ' ' + it.name + ' ' + it.loc).toLowerCase();
+        return words.every(function (w) { return hay.indexOf(w) >= 0; });
+      }).slice(0, 30);
+      if (!hits.length) { res.appendChild(E('p', 'note', '맞는 REF가 없습니다.')); return; }
+      hits.forEach(function (it) {
+        var b = E('button', 'pick-row'); b.type = 'button';
+        b.appendChild(E('b', 'iref', 'REF ' + it.code));
+        b.appendChild(E('span', '', (it.name || '') + ' · ' + (it.loc || '위치 없음')));
+        b.addEventListener('click', function () { Core.setAlias(fromKey, it.code, false); close(); if (onPicked) onPicked(it); });
+        res.appendChild(b);
+      });
+    }
+    q.addEventListener('input', run);
+    document.body.appendChild(ov);
+    run();
+    q.focus();
   };
 
   /* ============================== 엑셀(.xlsx) 읽기 ============================== */
