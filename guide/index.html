@@ -41,6 +41,7 @@
     <ul class="tips">
       <li>라벨(바코드)이 보이게 가까이 찍어 주세요. 한 장에 여러 개가 들어가도 됩니다.</li>
       <li>물건이 많으면 카메라 앱으로 먼저 쭉 찍은 뒤, 여기서 한 번에 고르면 빠릅니다.</li>
+      <li>결과는 <b>REF(전산 제품 코드)</b> 기준으로 정리합니다. 바코드가 REF가 아니면 "REF 연결"로 한 번만 이어 주세요.</li>
     </ul>
     <p class="note"><b>개인정보·보안:</b> 사진은 이 폰 안에서만 읽고 저장하거나 전송하지 않습니다. (라벨에 거래처 이름이 있어도 바코드 글자만 씁니다.)</p>
   </section>
@@ -188,20 +189,27 @@
     var agg = {}, order = [];
     var stat = { photos: state.photos.length, donePhotos: 0, okPhotos: 0, secs: 0, failed: [], serialSkips: 0 };
 
+    // 1차: 같은 사진 안에서 REF 바코드와 같은 시리얼을 가진 다른 번호(제조사 구성품 번호 등)를 찾아 REF로 자동 연결
+    if (index) {
+      var learned = [];
+      state.photos.forEach(function (p) {
+        if (p.done && p.codes) learned = learned.concat(C.refBatch(p.codes.map(function (c) { return c.text; }), index, aliases).learned);
+      });
+      if (C.learnAliases(learned)) aliases = C.getAliases();
+    }
+
+    // 2차: REF 기준으로 모으기
     state.photos.forEach(function (p) {
       if (!p.done) return;
       stat.donePhotos++;
       stat.secs += p.secs;
       p.locs = []; p.used = 0;
       if (p.error || !p.codes) { stat.failed.push(p); return; }
-      var infos = p.codes.map(function (c) { return { c: c, info: C.interpret(c.text) }; });
-      var serials = {};
-      infos.forEach(function (x) { if (x.info.serial) serials[x.info.serial] = true; });
-      infos.forEach(function (x) {
-        var c = x.c, info = x.info;
+      var batch = C.refBatch(p.codes.map(function (c) { return c.text; }), index, aliases);
+      batch.entries.forEach(function (e, i) {
+        var c = p.codes[i], info = e.info, res = e.res;
         if (info.type === 'location') { p.locs.push(info.loc); return; }
-        var res = index ? C.resolve(c.text, info, index, aliases) : null;
-        if (!res && serials[c.text]) { stat.serialSkips++; return; }      // 같은 라벨의 시리얼 바코드 → 따로 세지 않음
+        if (e.skip) { stat.serialSkips++; return; }   // 같은 라벨의 다른 바코드(시리얼만/REF 아닌 번호) → 따로 세지 않음
         var lk = C.lookupKey(c.text, info);
         var key = res ? 'I:' + C.normCode(res.item.code) : 'U:' + lk;
         var a = agg[key];
@@ -236,12 +244,18 @@
     gorder.sort(C.compareLoc);
     var glist = gorder.map(function (k) {
       var g = groups[k];
-      g.items.sort(function (x, y) { return (x.item.name || '').localeCompare(y.item.name || '', 'ko'); });
+      g.items.sort(function (x, y) { return C.compareCode(x.item.code, y.item.code); });   // 선반 안은 REF 번호 순
       return g;
     });
-    var usedAliases = [];
-    order.forEach(function (k) {
-      Object.keys(agg[k].aliasFrom).forEach(function (from) { usedAliases.push({ from: from, item: agg[k].item }); });
+    noLoc.sort(function (x, y) { return C.compareCode(x.item.code, y.item.code); });
+    // 지금 사진들에서 읽힌 번호 중 REF로 연결된 것은 전부 보여 줌(같은 라벨이라 따로 안 센 번호의 자동 연결도 포함 → 보고 풀 수 있게)
+    var seenKeys = {}, usedAliases = [];
+    state.photos.forEach(function (p) {
+      (p.codes || []).forEach(function (c) { seenKeys[C.lookupKey(c.text, C.interpret(c.text))] = true; });
+    });
+    if (index) Object.keys(aliases).forEach(function (from) {
+      var it = index[aliases[from]];
+      if (seenKeys[from] && it) usedAliases.push({ from: from, item: it, auto: C.isAutoAlias(from) });
     });
     return { groups: glist, noLoc: noLoc, unknown: unknown, stat: stat, kinds: order.length, qty: qtyTotal, usedAliases: usedAliases };
   }
@@ -267,7 +281,7 @@
     // 요약
     var stats = $('stats'); stats.textContent = '';
     [[m.stat.okPhotos + ' / ' + m.stat.donePhotos, '라벨 읽힌 사진'],
-     [m.qty + '개', '물건 (' + m.kinds + '종류)'],
+     [m.qty + '개', '물건 (REF ' + (m.kinds - m.unknown.length) + '종류)'],
      [m.groups.length + '곳', '넣을 선반'],
      [(m.noLoc.length + m.unknown.length + m.stat.failed.length) + '건', '확인 필요']].forEach(function (s) {
       var d = E('div', 'stat'); d.appendChild(E('b', '', s[0])); d.appendChild(E('span', '', s[1])); stats.appendChild(d);
@@ -298,8 +312,9 @@
         btn.setAttribute('aria-pressed', state.done[dk] ? 'true' : 'false');
         btn.appendChild(E('span', 'box', state.done[dk] ? '✓' : ''));
         var main = E('span', 'item-main');
-        main.appendChild(E('span', 'iname', a.item.name || a.item.code));
-        var codeLine = a.item.code + ' · ' + photoText(a.photoList) + serialText(a);
+        main.appendChild(E('span', 'iref', 'REF ' + a.item.code));        // REF(제품 코드)를 맨 앞에 크게
+        if (a.item.name) main.appendChild(E('span', 'iname', a.item.name));
+        var codeLine = photoText(a.photoList) + serialText(a);
         var froms = Object.keys(a.aliasFrom);
         if (froms.length) codeLine += ' · 연결한 번호 ' + froms.join(', ');
         main.appendChild(E('span', 'icode', codeLine));
@@ -341,8 +356,8 @@
         var ul1 = E('ul', 'att-list');
         m.noLoc.forEach(function (a) {
           var li = E('li'), d = E('div', 'grow');
-          d.appendChild(E('b', '', (a.item.name || a.item.code) + '  ×' + a.qty));
-          d.appendChild(E('span', 'meta', a.item.code + ' · ' + photoText(a.photoList)));
+          d.appendChild(E('b', 'iref', 'REF ' + a.item.code + '  ×' + a.qty));
+          d.appendChild(E('span', 'meta', (a.item.name ? a.item.name + ' · ' : '') + photoText(a.photoList)));
           d.appendChild(E('span', 'meta', a.suggest
             ? '후보: ' + a.suggest.loc + ' (같은 제품군 "' + a.item.group + '" 품목이 가장 많은 선반, ' + a.suggest.n + '개) — 정한 뒤 전산 위치도 고쳐 주세요.'
             : '후보 없음 — 직접 정한 뒤 전산 위치도 고쳐 주세요.'));
@@ -351,19 +366,20 @@
         ac.appendChild(ul1);
       }
       if (m.unknown.length) {
-        ac.appendChild(E('h3', 'sub-h', list ? '전산 목록에 없는 번호 (' + m.unknown.length + ')' : '읽은 바코드 (' + m.unknown.length + ')'));
+        ac.appendChild(E('h3', 'sub-h', list ? 'REF 미확인 — 전산 REF가 아닌 번호 (' + m.unknown.length + ')' : '읽은 바코드 (' + m.unknown.length + ')'));
         var ul2 = E('ul', 'att-list');
         m.unknown.forEach(function (a) {
           var li = E('li'), d = E('div', 'grow');
-          d.appendChild(E('b', 'code-line', a.raw));
-          var meta = a.info.kind + ' · ' + C.formatLabel(a.format) + ' · ' + photoText(a.photoList) + ' · ' + a.qty + '번';
-          if (a.info.part && a.info.part !== a.raw) meta += ' · 해석한 번호 ' + a.info.part;
+          d.appendChild(E('b', 'iref unk', 'REF 미확인  ×' + a.qty));
+          d.appendChild(E('span', 'meta code-line', '바코드 ' + a.raw));
+          var meta = a.info.kind + ' · ' + C.formatLabel(a.format) + ' · ' + photoText(a.photoList);
+          if (a.info.part && a.info.part !== a.raw) meta += ' · 바코드 속 번호 ' + a.info.part;
           d.appendChild(E('span', 'meta', meta));
           if (a.info.type === 'seven') d.appendChild(E('span', 'meta', '시리얼 번호일 수도 있습니다.'));
           li.appendChild(d);
           if (list) {
-            var lb = E('button', 'small-btn', '품목 연결'); lb.type = 'button';
-            lb.addEventListener('click', function () { openLink(a); });
+            var lb = E('button', 'small-btn', 'REF 연결'); lb.type = 'button';
+            lb.addEventListener('click', function () { C.openLinkDialog(list, a.lk, a.info.kind, function () { render(); }); });
             li.appendChild(lb);
           }
           ul2.appendChild(li);
@@ -384,12 +400,12 @@
         ac.appendChild(ul3);
       }
       if (m.usedAliases.length) {
-        ac.appendChild(E('h3', 'sub-h', '연결해 둔 번호 (' + m.usedAliases.length + ')'));
+        ac.appendChild(E('h3', 'sub-h', 'REF로 연결해 둔 번호 (' + m.usedAliases.length + ')'));
         var ul4 = E('ul', 'att-list');
         m.usedAliases.forEach(function (a) {
           var li = E('li'), d = E('div', 'grow');
-          d.appendChild(E('b', '', a.from + ' → ' + a.item.code));
-          d.appendChild(E('span', 'meta', a.item.name || ''));
+          d.appendChild(E('b', '', a.from + ' → REF ' + a.item.code));
+          d.appendChild(E('span', 'meta', (a.item.name || '') + (a.auto ? ' · 같은 라벨의 REF 바코드(같은 시리얼)를 보고 자동 연결' : ' · 직접 연결')));
           li.appendChild(d);
           var ub = E('button', 'small-btn', '연결 풀기'); ub.type = 'button';
           ub.addEventListener('click', function () { C.removeAlias(a.from); render(); });
@@ -418,47 +434,6 @@
       row.appendChild(d);
       pc.appendChild(row);
     });
-  }
-
-  /* ---------- 처음 보는 번호 → 전산 품목 연결 ---------- */
-  function openLink(a) {
-    var ov = E('div', 'overlay');
-    ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', '전산 품목과 연결');
-    var sh = E('div', 'sheet');
-    sh.appendChild(E('h2', 'h2', '전산 품목과 연결'));
-    sh.appendChild(E('p', 'note', '바코드 번호 ' + a.lk + ' (' + a.info.kind + ')를 어떤 전산 품목으로 볼까요? 한 번 연결하면 이 폰이 기억해서 다음부터는 바로 안내합니다.'));
-    var q = E('input'); q.type = 'search'; q.placeholder = '품목 이름이나 번호 (예: sleeve, 6693522)';
-    q.setAttribute('aria-label', '품목 찾기'); q.style.marginTop = '10px';
-    sh.appendChild(q);
-    var res = E('div'); res.style.marginTop = '8px';
-    sh.appendChild(res);
-    var cancel = E('button', 'btn ghost', '취소'); cancel.type = 'button'; cancel.style.marginTop = '12px';
-    sh.appendChild(cancel);
-    ov.appendChild(sh);
-    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
-    cancel.addEventListener('click', close);
-    ov.addEventListener('click', function (ev) { if (ev.target === ov) close(); });
-    function run() {
-      res.textContent = '';
-      var words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
-      if (!words.length) { res.appendChild(E('p', 'note', '이름 일부나 번호를 입력하면 후보가 나옵니다.')); return; }
-      var hits = list.items.filter(function (it) {
-        var hay = (it.code + ' ' + it.name + ' ' + it.loc).toLowerCase();
-        return words.every(function (w) { return hay.indexOf(w) >= 0; });
-      }).slice(0, 30);
-      if (!hits.length) { res.appendChild(E('p', 'note', '맞는 품목이 없습니다.')); return; }
-      hits.forEach(function (it) {
-        var b = E('button', 'pick-row'); b.type = 'button';
-        b.appendChild(E('b', '', it.name || it.code));
-        b.appendChild(E('span', '', it.code + ' · ' + (it.loc || '위치 없음')));
-        b.addEventListener('click', function () { C.setAlias(a.lk, it.code); close(); render(); });
-        res.appendChild(b);
-      });
-    }
-    q.addEventListener('input', run);
-    document.body.appendChild(ov);
-    run();
-    q.focus();
   }
 
   /* ---------- 선반 QR로 확인 ---------- */
@@ -502,10 +477,11 @@
     L.push('■ 선반 안내 (도는 순서)');
     m.groups.forEach(function (g, i) {
       L.push((i + 1) + ') ' + g.label);
-      g.items.forEach(function (a) { L.push('   - ' + (a.item.name || '') + ' (' + a.item.code + ') ×' + a.qty + ' [' + photoText(a.photoList) + ']' + (a.multiPhoto ? ' ※여러 사진' : '')); });
+      g.items.forEach(function (a) { L.push('   - REF ' + a.item.code + ' ×' + a.qty + ' | ' + (a.item.name || '') + ' [' + photoText(a.photoList) + ']' + (a.multiPhoto ? ' ※여러 사진' : '')); });
     });
-    if (m.noLoc.length) { L.push(''); L.push('■ 위치 없음'); m.noLoc.forEach(function (a) { L.push('   - ' + a.item.name + ' (' + a.item.code + ')' + (a.suggest ? ' 후보 ' + a.suggest.loc : '')); }); }
-    if (m.unknown.length) { L.push(''); L.push('■ 전산에 없는 번호'); m.unknown.forEach(function (a) { L.push('   - ' + a.raw + ' | ' + a.info.kind + ' | ' + a.format + ' [' + photoText(a.photoList) + ']'); }); }
+    if (m.noLoc.length) { L.push(''); L.push('■ 위치 없음'); m.noLoc.forEach(function (a) { L.push('   - REF ' + a.item.code + ' | ' + (a.item.name || '') + (a.suggest ? ' 후보 ' + a.suggest.loc : '')); }); }
+    if (m.unknown.length) { L.push(''); L.push('■ REF 미확인(전산 REF가 아닌 바코드)'); m.unknown.forEach(function (a) { L.push('   - 바코드 ' + a.raw + ' | ' + a.info.kind + ' | ' + a.format + ' [' + photoText(a.photoList) + ']'); }); }
+    if (m.usedAliases.length) { L.push(''); L.push('■ REF로 연결해 둔 번호'); m.usedAliases.forEach(function (a) { L.push('   - ' + a.from + ' → REF ' + a.item.code + (a.auto ? ' (자동)' : ' (직접)')); }); }
     if (m.stat.failed.length) { L.push(''); L.push('■ 라벨 못 찾은 사진: ' + m.stat.failed.map(function (p) { return p.no; }).join(', ')); }
     L.push('');
     L.push('■ 사진별');
