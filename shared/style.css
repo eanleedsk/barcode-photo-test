@@ -66,6 +66,13 @@ footer{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
 .stat b{display:block;font-size:22px;line-height:1.2}
 .stat span{font-size:13px;color:var(--muted)}
 
+/* 선반 대조 */
+.stats.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.stat.ok b{color:var(--ok)} .stat.warn b{color:var(--warn)} .stat.bad b{color:var(--bad)}
+.shelf-check .loc-count{white-space:normal;text-align:right}
+select.shelf-pick{display:block;width:100%;margin:6px 0 4px;font-size:15px}
+.shelf-sum{font-size:13px;color:var(--muted);margin:4px 0 0}
+
 /* 선반 카드 */
 .loc-head{display:flex;align-items:center;gap:10px}
 .loc-no{flex:none;width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
