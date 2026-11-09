@@ -107,7 +107,7 @@
 
   function resetStats() {
     S = { startedAt: Date.now(), firstScan: 0, lastScan: 0, frames: 0, decodeMs: 0, events: [], lastSeen: {}, recentSerials: {},
-          counts: {}, shelf: '', res: '', shots: 0, misses: 0 };
+          serialEv: {}, shelf: '', res: '', shots: 0, misses: 0 };   // serialEv: 시리얼 → 그 시리얼로 센 기록(같은 물건은 한 번만)
   }
   resetStats();
 
@@ -328,7 +328,7 @@
       last.appendChild(E('div', 'm', '라벨을 네모 칸 안에 크게, 흔들리지 않게 맞추고 다시 눌러 주세요.'));
       return;
     }
-    handleBatch(got, Date.now(), true);
+    handleBatch(got, got.map(function (g) { return g.text; }), Date.now(), true);
   }
   $('btn-shot').addEventListener('click', capture);
   $('video-box').addEventListener('click', function () {   // 화면 터치 = 찍기(카메라가 꺼져 있으면 켜기)
@@ -384,35 +384,66 @@
       if (isNew && !fresh.some(function (f) { return f.text === r.text; })) fresh.push(r);
     });
     res.forEach(function (r) { var i = C.interpret(r.text); if (i.serial) S.recentSerials[i.serial] = now; });
-    if (fresh.length) handleBatch(fresh, now, false);
+    if (fresh.length) handleBatch(res, fresh.map(function (f) { return f.text; }), now, false);
   }
 
-  // 한 번에 읽힌 바코드 묶음 처리: 선반 라벨 먼저(같이 찍힌 물건이 그 선반으로 가도록), 그다음 물건
-  function handleBatch(items, now, fromShot) {
-    items.forEach(function (r) { var i = C.interpret(r.text); if (i.serial) S.recentSerials[i.serial] = now; });
-    var locs = items.filter(function (r) { return C.interpret(r.text).type === 'location'; });
-    var parts = items.filter(function (r) { return C.interpret(r.text).type !== 'location'; });
-    var acted = false;
-    locs.concat(parts).forEach(function (r) { if (onNew(r.text, r.format, now)) acted = true; });
-    if (fromShot && !acted) {   // 시리얼 바코드만 읽혀서 아무것도 안 센 경우에도 알려 줌
+  // 한 번에 읽힌 바코드 묶음 처리(REF 우선):
+  //  all = 화면(또는 한 번 찍기)에 함께 보인 바코드 전부, freshTexts = 그중 이번에 새로 셀 것
+  //  같은 시리얼의 바코드가 함께 보이면 REF로 찾아지는 것만 세고, 다른 번호는 그 REF로 자동 연결한다.
+  //  선반 라벨을 먼저 처리(같이 찍힌 물건이 그 선반으로 가도록)
+  function handleBatch(all, freshTexts, now, fromShot) {
+    all.forEach(function (r) { var i = C.interpret(r.text); if (i.serial) S.recentSerials[i.serial] = now; });
+    var texts = all.map(function (r) { return r.text; });
+    var batch = C.refBatch(texts, index, C.getAliases());
+    if (index && C.learnAliases(batch.learned)) { relinkEvents(); batch = C.refBatch(texts, index, C.getAliases()); }
+    var todo = [], done = {};
+    batch.entries.forEach(function (e, i) {
+      if (freshTexts.indexOf(e.text) < 0 || done[e.text] || e.skip) return;
+      done[e.text] = true;
+      todo.push({ e: e, r: all[i] });
+    });
+    todo.sort(function (x, y) { return (x.e.info.type === 'location' ? 0 : 1) - (y.e.info.type === 'location' ? 0 : 1); });
+    var results = todo.map(function (x) { return onNew(x.r.text, x.r.format, now); });
+    if (fromShot && results.indexOf('ok') < 0) {   // 찍었는데 새로 센 것이 없으면 이유를 알려 줌
       S.misses++;
       beep('warn'); flash('warn');
       var last = $('last'); last.textContent = '';
-      last.appendChild(E('div', 't', '시리얼 바코드만 읽혔습니다'));
-      last.appendChild(E('div', 'm', '품목 바코드(막대)가 네모 칸에 보이게 다시 찍어 주세요.'));
+      if (results.indexOf('dupSerial') >= 0) {
+        last.appendChild(E('div', 't', '이미 센 물건입니다'));
+        last.appendChild(E('div', 'm', '같은 시리얼(같은 물건)은 한 번만 셉니다.'));
+      } else {
+        last.appendChild(E('div', 't', 'REF 바코드가 안 보입니다'));
+        last.appendChild(E('div', 'm', '시리얼 바코드만 읽혔습니다. 품목(REF) 바코드가 네모 칸에 보이게 다시 찍어 주세요.'));
+      }
     }
   }
 
   function itemKey(ev) { return ev.item ? 'I:' + C.normCode(ev.item.code) : 'U:' + ev.lk; }
-  function addCount(ev, d) {
-    var sk = ev.shelf || '(선반 없음)';
-    var g = S.counts[sk] || (S.counts[sk] = {});
-    var k = itemKey(ev);
-    var c = g[k] || (g[k] = { n: 0, ev: ev });
-    c.n += d;
-    if (c.n <= 0) delete g[k];
+  // 선반별·REF별 개수(취소된 기록 제외, 언제든 기록에서 다시 계산)
+  function buildCounts() {
+    var counts = {};
+    liveEvents().forEach(function (ev) {
+      var sk = ev.shelf || '(선반 없음)', k = itemKey(ev);
+      var g = counts[sk] || (counts[sk] = {});
+      (g[k] || (g[k] = { n: 0, ev: ev })).n++;
+    });
+    return counts;
   }
+  // REF 연결(직접·자동)이 새로 생기면, 이미 센 'REF 미확인' 기록을 REF로 다시 찾는다
+  function relinkEvents() {
+    if (!index) return;
+    var aliases = C.getAliases();
+    S.events.forEach(function (ev) {
+      if (ev.kind !== 'item' || ev.item) return;
+      var res = C.resolve(ev.raw, ev.info, index, aliases);
+      if (!res) return;
+      ev.item = res.item; ev.via = res.via;
+      if (ev.shelf && ev.item.loc) ev.mismatch = !C.locMatches(ev.item.loc, ev.shelf);
+    });
+  }
+  function learnOne(from, to) { if (index && C.learnAliases([{ from: from, to: to }])) relinkEvents(); }
 
+  // 새로 읽힌 바코드 하나 처리. 돌려주는 값: 'ok'(셈·선반 바뀜) / 'serialOnly'(시리얼 바코드라 안 셈) / 'dupSerial'(이미 센 물건)
   function onNew(text, format, now) {
     var info = C.interpret(text);
     if (info.type === 'location') {
@@ -420,41 +451,51 @@
       S.events.push({ t: now, raw: text, format: format, kind: 'shelf', shelf: info.loc });
       beep('shelf'); flash('shelf');
       renderAll();
-      return true;
+      return 'ok';
     }
     var res = index ? C.resolve(text, info, index, C.getAliases()) : null;
-    // 같은 라벨의 시리얼 바코드(네모)는 따로 세지 않는다
-    if (!res && S.recentSerials[text] && now - S.recentSerials[text] < SERIAL_WINDOW_MS) return false;
-    // 반대로 시리얼 바코드를 먼저 읽고 나서 제조사 라벨(막대)을 읽은 경우: 앞서 센 시리얼 쪽을 취소
+    // 시리얼만 든 바코드(네모)는 따로 세지 않는다: 방금 함께 보였거나, 이미 센 물건의 시리얼이면
+    if (!res && (S.serialEv[text] || (S.recentSerials[text] && now - S.recentSerials[text] < SERIAL_WINDOW_MS))) return 'serialOnly';
     if (info.serial) {
-      for (var i = S.events.length - 1; i >= 0; i--) {
-        var pe = S.events[i];
-        if (now - pe.t > SERIAL_WINDOW_MS) break;
-        if (pe.kind === 'item' && !pe.removed && !pe.item && pe.raw === info.serial) { pe.removed = true; addCount(pe, -1); }
+      // 시리얼 바코드만 먼저 세어 둔 것은 취소
+      S.events.forEach(function (pe) { if (pe.kind === 'item' && !pe.removed && !pe.item && pe.raw === info.serial) pe.removed = true; });
+      var prev = S.serialEv[info.serial];
+      if (prev && !prev.removed) {
+        if (!prev.item && res) { prev.removed = true; learnOne(prev.lk, res.item.code); }   // 앞서 센 'REF 미확인'을 이번 REF로 바꿈
+        else { if (prev.item && !res) learnOne(C.lookupKey(text, info), prev.item.code); renderAll(); return 'dupSerial'; }
       }
     }
     var ev = { t: now, raw: text, format: format, kind: 'item', info: info, item: res ? res.item : null, via: res ? res.via : '',
-               lk: C.lookupKey(text, info), shelf: S.shelf };
+               lk: C.lookupKey(text, info), shelf: S.shelf, serial: info.serial || '' };
     if (ev.item && S.shelf && ev.item.loc) ev.mismatch = !C.locMatches(ev.item.loc, S.shelf);
+    if (info.serial) S.serialEv[info.serial] = ev;
     if (!S.firstScan) S.firstScan = now;
     S.lastScan = now;
     S.events.push(ev);
-    addCount(ev, 1);
     var warn = ev.mismatch || (index && !ev.item);
     beep(warn ? 'warn' : 'ok'); flash(warn ? 'warn' : 'ok');
     renderAll();
-    return true;
+    return 'ok';
   }
 
   /* ---------- 그리기 ---------- */
-  function evTitle(ev) { return ev.item ? (ev.item.name || ev.item.code) : ev.raw; }
+  // REF(제품 코드)를 맨 앞에: "REF 6528173" / 못 찾으면 "REF 미확인"
+  function evTitle(ev) { return ev.item ? 'REF ' + ev.item.code : 'REF 미확인'; }
+  function evName(ev) { return ev.item ? (ev.item.name || '') : '바코드 ' + ev.raw; }
   function evMeta(ev) {
     var m = [];
-    if (ev.item) m.push(ev.item.code + (ev.item.loc ? ' · 전산 위치 ' + ev.item.loc : ' · 전산 위치 없음'));
-    else m.push(ev.info.kind + (index ? ' · 전산 목록에 없음' : ''));
+    if (ev.item) m.push(ev.item.loc ? '전산 위치 ' + ev.item.loc : '전산 위치 없음');
+    else m.push(ev.info.kind + (index ? ' · 전산 REF가 아님' : ''));
     if (ev.info && ev.info.serial) m.push('시리얼 ' + ev.info.serial);
     if (ev.mismatch) m.push('⚠️ 지금 선반(' + ev.shelf + ')과 전산 위치가 다릅니다');
     return m.join(' · ');
+  }
+  function linkButton(ev) {   // 'REF 미확인' 번호를 REF로 잇는 버튼
+    var b = E('button', 'small-btn', 'REF 연결'); b.type = 'button';
+    b.addEventListener('click', function () {
+      C.openLinkDialog(list, ev.lk, ev.info.kind, function () { relinkEvents(); renderAll(); });
+    });
+    return b;
   }
   function liveEvents() { return S.events.filter(function (e) { return e.kind === 'item' && !e.removed; }); }
 
@@ -472,21 +513,35 @@
     var le = S.events[S.events.length - 1];
     if (le) {
       if (le.kind === 'shelf') { last.appendChild(E('div', 't', '선반 ' + le.shelf)); last.appendChild(E('div', 'm', '이제부터 읽는 물건은 이 선반으로 셉니다.')); }
-      else { last.appendChild(E('div', 't', (le.removed ? '(취소됨) ' : '') + evTitle(le))); last.appendChild(E('div', 'm', evMeta(le))); }
+      else {
+        last.appendChild(E('div', 't iref' + (le.item ? '' : ' unk'), (le.removed ? '(취소됨) ' : '') + evTitle(le)));
+        if (evName(le)) last.appendChild(E('div', 'm', evName(le)));
+        last.appendChild(E('div', 'm', evMeta(le)));
+        if (!le.item && list && !le.removed) { var lr = E('div', 'row'); lr.appendChild(linkButton(le)); last.appendChild(lr); }
+      }
     } else last.appendChild(E('div', 'm', '아직 읽은 것이 없습니다.'));
 
     var bs = $('by-shelf'); bs.textContent = '';
-    var shelves = Object.keys(S.counts).filter(function (k) { return Object.keys(S.counts[k]).length; });
+    var counts = buildCounts();
+    var shelves = Object.keys(counts);
     shelves.sort(function (a, b) { return C.compareLoc(a === '(선반 없음)' ? '' : a, b === '(선반 없음)' ? '' : b); });
     if (!shelves.length) bs.appendChild(E('p', 'note', '아직 없습니다.'));
     shelves.forEach(function (sk) {
       bs.appendChild(E('h3', 'sub-h', sk));
       var ul = E('ul', 'att-list');
-      Object.keys(S.counts[sk]).forEach(function (k) {
-        var c = S.counts[sk][k], li = E('li'), d = E('div', 'grow');
-        d.appendChild(E('b', '', evTitle(c.ev) + '  ×' + c.n));
+      var keys = Object.keys(counts[sk]).sort(function (a, b) {   // REF 번호 순, 'REF 미확인'은 맨 아래
+        var ea = counts[sk][a].ev, eb = counts[sk][b].ev;
+        if (!!ea.item !== !!eb.item) return ea.item ? -1 : 1;
+        return C.compareCode(ea.item ? ea.item.code : ea.raw, eb.item ? eb.item.code : eb.raw);
+      });
+      keys.forEach(function (k) {
+        var c = counts[sk][k], li = E('li'), d = E('div', 'grow');
+        d.appendChild(E('b', 'iref' + (c.ev.item ? '' : ' unk'), evTitle(c.ev) + '  ×' + c.n));
+        if (evName(c.ev)) d.appendChild(E('span', 'meta', evName(c.ev)));
         d.appendChild(E('span', 'meta', evMeta(c.ev)));
-        li.appendChild(d); ul.appendChild(li);
+        li.appendChild(d);
+        if (!c.ev.item && list) li.appendChild(linkButton(c.ev));
+        ul.appendChild(li);
       });
       bs.appendChild(ul);
     });
@@ -496,7 +551,7 @@
       var li = E('li', ev.removed ? 'removed' : '');
       var when = C.fmtClock(new Date(ev.t));
       if (ev.kind === 'shelf') li.appendChild(E('b', '', '📍 선반 ' + ev.shelf));
-      else li.appendChild(E('b', '', evTitle(ev)));
+      else li.appendChild(E('b', '', evTitle(ev) + (evName(ev) ? ' · ' + evName(ev) : '')));
       li.appendChild(E('span', 'meta', when + ' · ' + C.formatLabel(ev.format) + (ev.kind === 'item' ? ' · ' + evMeta(ev) : '') + (ev.removed ? ' · 같은 라벨의 시리얼이라 취소' : '')));
       log.appendChild(li);
     });
@@ -516,18 +571,18 @@
     L.push('화면 읽기 ' + S.frames + '번 · 1번에 평균 ' + (S.frames ? Math.round(S.decodeMs / S.frames) : 0) + 'ms');
     L.push('소리: ' + ($('opt-sound').checked ? '켜짐' : '꺼짐') + ' · 재생 성공 ' + soundStat.ok + '번 / 실패 ' + soundStat.fail + '번' + (soundStat.err ? ' (마지막 오류 ' + soundStat.err + ')' : ''));
     L.push('');
-    L.push('■ 선반별');
-    Object.keys(S.counts).forEach(function (sk) {
-      var g = S.counts[sk], ks = Object.keys(g);
-      if (!ks.length) return;
+    L.push('■ 선반별 (REF 기준)');
+    var counts = buildCounts();
+    Object.keys(counts).forEach(function (sk) {
+      var g = counts[sk], ks = Object.keys(g);
       L.push(sk);
-      ks.forEach(function (k) { var c = g[k]; L.push('   - ' + evTitle(c.ev) + (c.ev.item ? ' (' + c.ev.item.code + ')' : '') + ' ×' + c.n + (c.ev.mismatch ? ' ※전산 위치 다름' : '')); });
+      ks.forEach(function (k) { var c = g[k]; L.push('   - ' + evTitle(c.ev) + ' ×' + c.n + ' | ' + evName(c.ev) + (c.ev.mismatch ? ' ※전산 위치 다름' : '')); });
     });
     L.push('');
     L.push('■ 읽은 순서 (시작부터 초)');
     var base = S.events.length ? S.events[0].t : 0;
     S.events.forEach(function (ev) {
-      L.push(((ev.t - base) / 1000).toFixed(1) + 's ' + (ev.kind === 'shelf' ? '선반 ' + ev.shelf : ev.raw + ' | ' + ev.format + (ev.item ? ' | ' + ev.item.code : ' | 목록에 없음')) + (ev.removed ? ' (취소)' : '') + (ev.mismatch ? ' (위치 다름)' : ''));
+      L.push(((ev.t - base) / 1000).toFixed(1) + 's ' + (ev.kind === 'shelf' ? '선반 ' + ev.shelf : evTitle(ev) + ' | 바코드 ' + ev.raw + ' | ' + ev.format) + (ev.removed ? ' (취소)' : '') + (ev.mismatch ? ' (위치 다름)' : ''));
     });
     C.copyText(L.join('\n')).then(function (ok) {
       var st = $('copy-status');
@@ -542,7 +597,7 @@
       return { shelf: S.shelf, frames: S.frames, avgMs: S.frames ? S.decodeMs / S.frames : 0, shots: S.shots, misses: S.misses, mode: mode,
                seen: $('aim').classList.contains('seen'), shooting: !!shot,
                events: S.events.map(function (e) { return { raw: e.raw, kind: e.kind, shelf: e.shelf, code: e.item ? e.item.code : null, removed: !!e.removed, mismatch: !!e.mismatch }; }),
-               counts: Object.keys(S.counts).reduce(function (o, sk) { o[sk] = {}; Object.keys(S.counts[sk]).forEach(function (k) { o[sk][k] = S.counts[sk][k].n; }); return o; }, {}) };
+               counts: (function () { var c = buildCounts(), o = {}; Object.keys(c).forEach(function (sk) { o[sk] = {}; Object.keys(c[sk]).forEach(function (k) { o[sk][k] = c[sk][k].n; }); }); return o; })() };
     },
     stop: function () { stop(); },
     sound: function () { return { ok: soundStat.ok, fail: soundStat.fail, err: soundStat.err, src: player ? player.src.slice(0, 5) : '' }; },
