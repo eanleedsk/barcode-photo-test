@@ -70,6 +70,12 @@ footer{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
 .ref-box{margin-top:10px;padding:8px 12px 10px;border:1px dashed var(--line);border-radius:10px;background:var(--bg)}
 .ref-box .check{margin-top:0}
 
+/* 입출고 기록 칸 */
+.field{display:flex;align-items:center;gap:10px;margin-top:10px}
+.field span{flex:none;width:56px;font-size:15px;color:var(--muted)}
+.field input{flex:1;min-width:0;min-height:44px;font:inherit;font-size:16px;border-radius:10px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);padding:0 10px}
+
 /* 선반 대조 */
 .stats.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .stat.ok b{color:var(--ok)} .stat.warn b{color:var(--warn)} .stat.bad b{color:var(--bad)}
