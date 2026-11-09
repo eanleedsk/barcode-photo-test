@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<!-- 이 페이지가 사진을 밖으로 보내지 못하도록 브라우저 차원에서 막는다(같은 주소로의 요청만 허용). -->
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self'; form-action 'none'; base-uri 'self'">
+<title>라벨 사진 읽기 시험</title>
+<style>
+:root{
+  --navy:#0A2540; --amber:#EA7600;
+  --bg:#F4F6F9; --card:#FFFFFF; --ink:#14213D; --muted:#566579; --line:#D9E0E8;
+  --ok:#1B7F4B; --okbg:#E6F4EC; --bad:#B42318; --badbg:#FDECEA; --info:#2457A6; --infobg:#E8F0FB;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0D1520; --card:#16212F; --ink:#E8EEF5; --muted:#9FB0C3; --line:#2A3A4D;
+         --ok:#5BD08F; --okbg:#12301F; --bad:#FF8A80; --badbg:#3A1A18; --info:#8DB7F5; --infobg:#18283F; }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
+  font-size:16px;line-height:1.5;word-break:keep-all;padding-bottom:env(safe-area-inset-bottom)}
+header{background:var(--navy);color:#fff;border-bottom:4px solid var(--amber);
+  padding:14px 16px;padding-top:calc(14px + env(safe-area-inset-top))}
+header h1{margin:0;font-size:20px;line-height:1.3}
+header p{margin:4px 0 0;font-size:13px;opacity:.85}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px 32px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px}
+.sr{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+.btn{display:flex;align-items:center;justify-content:center;min-height:56px;width:100%;border-radius:12px;
+  font-size:17px;font-weight:700;text-align:center;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.btn.primary{background:var(--amber);color:#fff}
+.btn.ghost{background:var(--card);color:var(--navy);border:2px solid var(--navy)}
+@media (prefers-color-scheme: dark){ .btn.ghost{color:var(--ink);border-color:var(--muted)} }
+.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+.btn + .btn{margin-top:10px}
+.status{font-size:14px;color:var(--muted);margin:10px 0 0}
+.status.ok{color:var(--ok)} .status.bad{color:var(--bad)}
+.tips{margin:0;padding-left:18px;color:var(--muted);font-size:14px}
+.tips li{margin:2px 0}
+.shot-head{display:flex;gap:12px;align-items:center}
+.thumb{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex:none;background:var(--bg)}
+.verdict{font-weight:700;font-size:17px}
+.verdict.ok{color:var(--ok)} .verdict.bad{color:var(--bad)}
+.meta{font-size:13px;color:var(--muted)}
+.code{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.chip{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;margin-right:6px}
+.chip.fmt{background:var(--infobg);color:var(--info)}
+.chip.ok{background:var(--okbg);color:var(--ok)}
+.chip.info{background:var(--infobg);color:var(--info)}
+.code-text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:19px;font-weight:700;
+  word-break:break-all;margin:6px 0 2px}
+.note{font-size:14px;color:var(--muted)}
+.cross{margin-top:10px;font-size:14px;font-weight:700;color:var(--ok)}
+details{margin-top:10px;font-size:13px;color:var(--muted)}
+summary{cursor:pointer;min-height:32px;display:flex;align-items:center}
+.att{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px dashed var(--line)}
+.att b{color:var(--ink)}
+.summary-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.summary-bar .big{font-size:17px;font-weight:700}
+.small-btn{min-height:44px;padding:0 16px;border-radius:10px;border:2px solid var(--navy);background:var(--card);
+  color:var(--navy);font-size:15px;font-weight:700;cursor:pointer}
+@media (prefers-color-scheme: dark){ .small-btn{color:var(--ink);border-color:var(--muted)} }
+footer{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>라벨 사진 읽기 시험</h1>
+  <p>부품 라벨을 사진으로 찍으면 바코드가 읽히는지 확인하는 시험용 페이지입니다.</p>
+</header>
+
+<main class="wrap">
+  <section class="card" aria-labelledby="h-how">
+    <h2 id="h-how" style="margin:0 0 8px;font-size:16px">사진 찍기</h2>
+    <label class="btn primary" for="cam" id="btn-cam" role="button">📷 카메라로 라벨 찍기</label>
+    <label class="btn ghost" for="pick" id="btn-pick" role="button">앨범에서 사진 고르기</label>
+    <input class="sr" id="cam" type="file" accept="image/*" capture="environment" aria-label="카메라로 라벨 찍기">
+    <input class="sr" id="pick" type="file" accept="image/*" multiple aria-label="앨범에서 사진 고르기">
+    <p class="status" id="engine" role="status">읽기 엔진 준비 중…</p>
+  </section>
+
+  <section class="card" aria-labelledby="h-tips">
+    <h2 id="h-tips" style="margin:0 0 6px;font-size:16px">잘 읽히게 찍는 법</h2>
+    <ul class="tips">
+      <li>밝은 곳에서, 바코드가 화면에 크게 보이도록 가까이 찍어 주세요.</li>
+      <li>초점이 맞은 뒤 찍고, 빛이 반사되면 각도를 살짝 바꿔 주세요.</li>
+      <li>라벨이 여러 개 보여도 괜찮습니다. 한 장에서 모두 찾아봅니다.</li>
+    </ul>
+    <p class="note" style="margin:10px 0 0">
+      <b>개인정보·보안:</b> 사진은 이 폰 안에서만 처리되며, 저장하거나 어디로도 전송하지 않습니다.
+      (브라우저 설정으로 외부 전송이 막혀 있습니다.)
+    </p>
+  </section>
+
+  <section class="card" id="sum-card" hidden>
+    <div class="summary-bar">
+      <span class="big" id="sum-text"></span>
+      <button class="small-btn" id="btn-copy" type="button">결과 전체 복사</button>
+    </div>
+    <p class="status" id="copy-status" role="status"></p>
+  </section>
+
+  <div id="results" aria-live="polite"></div>
+
+  <footer>
+    <div id="foot-engine"></div>
+    <div id="foot-device"></div>
+  </footer>
+</main>
+
+<script src="vendor/reader.iife.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- 작은 도우미 ---------- */
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = text;   // 바코드 내용은 항상 글자로만 넣는다
+    return e;
+  }
+  function tick() { return new Promise(function (r) { setTimeout(r, 0); }); }
+
+  var OPTS = { tryHarder: true, tryRotate: true, tryInvert: true, tryDownscale: true, maxNumberOfSymbols: 10 };
+  var MAX_SIDE = 3000;
+
+  /* ---------- 읽기 엔진 준비 ---------- */
+  var engineReady = false;
+  var engineEl = $('engine');
+  function setEngine(msg, cls) { engineEl.textContent = msg; engineEl.className = 'status ' + (cls || ''); }
+
+  var enginePromise;
+  if (typeof ZXingWASM === 'undefined' || typeof WebAssembly === 'undefined') {
+    setEngine('이 브라우저에서는 읽기 엔진을 쓸 수 없습니다. 최신 크롬이나 사파리로 열어 주세요.', 'bad');
+    enginePromise = Promise.resolve(false);
+  } else {
+    enginePromise = ZXingWASM.prepareZXingModule({
+      overrides: { locateFile: function (p) { return 'vendor/' + p; } },
+      fireImmediately: true
+    }).then(function () {
+      engineReady = true;
+      setEngine('읽기 엔진 준비됨 ✅', 'ok');
+      return true;
+    }).catch(function () {
+      setEngine('읽기 엔진을 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.', 'bad');
+      return false;
+    });
+    $('foot-engine').textContent = '읽기 엔진: zxing-wasm ' + (ZXingWASM.ZXING_WASM_VERSION || '');
+  }
+  (function () {
+    var ua = navigator.userAgent || '';
+    var kind = /iPhone|iPad|iPod/.test(ua) ? '아이폰/아이패드' : /Android/.test(ua) ? '안드로이드' : '컴퓨터 또는 기타';
+    $('foot-device').textContent = '기기: ' + kind + ' · 화면 ' + screen.width + '×' + screen.height;
+  })();
+
+  /* ---------- 사진 → 픽셀 ---------- */
+  function loadImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { resolve({ img: img, url: url }); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('사진을 열 수 없습니다')); };
+      img.src = url;
+    });
+  }
+  function drawScaled(img, scale) {
+    var w = Math.max(1, Math.round(img.naturalWidth * scale));
+    var h = Math.max(1, Math.round(img.naturalHeight * scale));
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    var ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, w, h);
+    return ctx.getImageData(0, 0, w, h);
+  }
+  function grayOf(id) {
+    var d = id.data, n = d.length / 4, g = new Uint8ClampedArray(n);
+    for (var i = 0, j = 0; i < n; i++, j += 4) g[i] = (d[j] * 299 + d[j + 1] * 587 + d[j + 2] * 114) / 1000;
+    return g;
+  }
+  function grayToImageData(g, w, h) {
+    var out = new ImageData(w, h), d = out.data;
+    for (var i = 0, j = 0; i < g.length; i++, j += 4) { d[j] = d[j + 1] = d[j + 2] = g[i]; d[j + 3] = 255; }
+    return out;
+  }
+  function stretch(g) {                      // 어두운 쪽 2%, 밝은 쪽 2%를 잘라내고 0~255로 넓힘
+    var hist = new Uint32Array(256), i;
+    for (i = 0; i < g.length; i++) hist[g[i]]++;
+    var cut = g.length * 0.02, acc = 0, lo = 0, hi = 255;
+    for (i = 0; i < 256; i++) { acc += hist[i]; if (acc >= cut) { lo = i; break; } }
+    acc = 0;
+    for (i = 255; i >= 0; i--) { acc += hist[i]; if (acc >= cut) { hi = i; break; } }
+    if (hi - lo < 10) return g;
+    var out = new Uint8ClampedArray(g.length), k = 255 / (hi - lo);
+    for (i = 0; i < g.length; i++) out[i] = (g[i] - lo) * k;
+    return out;
+  }
+  function binarize(g, t) {
+    var out = new Uint8ClampedArray(g.length);
+    for (var i = 0; i < g.length; i++) out[i] = g[i] > t ? 255 : 0;
+    return out;
+  }
+
+  /* ---------- 읽기 시도 목록 (사진 크기에 따라 달라짐) ---------- */
+  function buildAttempts(L) {
+    var list = [], s;
+    if (L > 2000) {
+      s = Math.min(1, MAX_SIDE / L);
+      list.push({ tag: '원본 ' + Math.round(L * s) + 'px', scale: s, mode: 'plain' });
+      list.push({ tag: '대비 보정', scale: s, mode: 'contrast' });
+      list.push({ tag: '축소 1600px', scale: 1600 / L, mode: 'plain' });
+      list.push({ tag: '축소 1600px + 대비', scale: 1600 / L, mode: 'contrast' });
+      s = 2000 / L;
+      [130, 160, 190].forEach(function (t) { list.push({ tag: '흑백 변환(문턱 ' + t + ')', scale: s, mode: 'thr', t: t }); });
+    } else {
+      list.push({ tag: '원본 ' + L + 'px', scale: 1, mode: 'plain' });
+      list.push({ tag: '대비 보정', scale: 1, mode: 'contrast' });
+      list.push({ tag: '2배 확대', scale: 2, mode: 'plain' });
+      list.push({ tag: '2배 확대 + 대비', scale: 2, mode: 'contrast' });
+      [130, 160, 190].forEach(function (t) { list.push({ tag: '2배 확대 + 흑백(문턱 ' + t + ')', scale: 2, mode: 'thr', t: t }); });
+    }
+    return list;
+  }
+
+  /* ---------- 바코드 내용 해석 ---------- */
+  function interpret(text) {
+    var m;
+    if ((m = /^M(\d{7})S(\d{4,10})$/.exec(text))) {
+      return { kind: '제조사 라벨', level: 'ok', note: '부품번호 ' + m[1] + ' · 시리얼 ' + m[2], part: m[1], serial: m[2] };
+    }
+    if (/^\+[A-Z]\d{3}/.test(text)) {
+      return { kind: '리더기 형식(+…)', level: 'info', note: '이 시험에서는 해석하지 않고, 읽힌 글자만 보여줍니다.' };
+    }
+    if (/^\d{7}$/.test(text)) {
+      return { kind: '7자리 숫자', level: 'info', note: '부품번호 또는 시리얼일 수 있습니다. 같은 사진의 막대 바코드와 비교해 보세요.', seven: text };
+    }
+    if (/^KTS-\d+(-[0-9A-Za-z]+)*$/i.test(text)) {
+      return { kind: '선반 위치', level: 'ok', note: text.toUpperCase() };
+    }
+    return { kind: '알 수 없는 형식', level: 'info', note: '읽힌 글자만 보여줍니다.' };
+  }
+
+  /* ---------- 사진 한 장 처리 ---------- */
+  var shotNo = 0, okShots = 0, reports = [];
+  var queue = Promise.resolve();
+
+  function setBusy(b) {
+    ['btn-cam', 'btn-pick'].forEach(function (id) { $(id).setAttribute('aria-disabled', b ? 'true' : 'false'); });
+  }
+
+  async function processFile(file) {
+    var ready = await enginePromise;
+    if (!ready) { setEngine('읽기 엔진이 준비되지 않아 시험할 수 없습니다.', 'bad'); return; }
+    shotNo++;
+    var no = shotNo;
+    var t0 = performance.now();
+    var loaded;
+    try { loaded = await loadImage(file); }
+    catch (e) { addErrorCard(no, e.message); return; }
+
+    var img = loaded.img;
+    var W = img.naturalWidth, H = img.naturalHeight, L = Math.max(W, H);
+
+    // 작은 미리보기(저장하지 않고 화면에만 사용)
+    var thumbUrl = '';
+    try {
+      var tc = document.createElement('canvas'); var ts = 160 / L;
+      tc.width = Math.max(1, Math.round(W * ts)); tc.height = Math.max(1, Math.round(H * ts));
+      tc.getContext('2d').drawImage(img, 0, 0, tc.width, tc.height);
+      thumbUrl = tc.toDataURL('image/jpeg', 0.6);
+    } catch (e) { /* 미리보기 실패는 무시 */ }
+
+    var attempts = buildAttempts(L);
+    var found = {};          // 키 → {format,text,first,count}
+    var order = [];
+    var attLog = [];
+    var cache = { scale: null, id: null, gray: null };
+
+    for (var i = 0; i < attempts.length; i++) {
+      var a = attempts[i];
+      $('sum-text').textContent = '사진 ' + no + ' 읽는 중… (' + (i + 1) + '/' + attempts.length + ')';
+      $('sum-card').hidden = false;
+      await tick();
+      var n = 0, err = '';
+      try {
+        if (cache.scale !== a.scale) { cache.id = drawScaled(img, a.scale); cache.gray = null; cache.scale = a.scale; }
+        var input = cache.id;
+        if (a.mode !== 'plain') {
+          if (!cache.gray) cache.gray = grayOf(cache.id);
+          var g = a.mode === 'contrast' ? stretch(cache.gray) : binarize(stretch(cache.gray), a.t);
+          input = grayToImageData(g, cache.id.width, cache.id.height);
+        }
+        var res = await ZXingWASM.readBarcodes(input, OPTS);
+        for (var k = 0; k < res.length; k++) {
+          var r = res[k];
+          if (!r.isValid || !r.text) continue;
+          n++;
+          var key = r.format + '|' + r.text;
+          if (!found[key]) { found[key] = { format: r.format, text: r.text, first: a.tag, count: 0 }; order.push(key); }
+          found[key].count++;
+        }
+      } catch (e) { err = '오류'; }
+      attLog.push({ tag: a.tag, n: n, err: err });
+    }
+    URL.revokeObjectURL(loaded.url);
+    cache = null;
+
+    var secs = (performance.now() - t0) / 1000;
+    var codes = order.map(function (k) { return found[k]; });
+    renderCard(no, thumbUrl, W, H, secs, codes, attLog);
+  }
+
+  function formatLabel(f) {
+    var map = { Code128: 'Code 128 (막대)', DataMatrix: 'Data Matrix (네모)', QRCode: 'QR', Code39: 'Code 39', Code93: 'Code 93',
+                EAN13: 'EAN-13', EAN8: 'EAN-8', ITF: 'ITF', PDF417: 'PDF417', Aztec: 'Aztec', Codabar: 'Codabar' };
+    return map[f] || f;
+  }
+
+  function renderCard(no, thumbUrl, W, H, secs, codes, attLog) {
+    var ok = codes.length > 0;
+    if (ok) okShots++;
+    var card = el('section', 'card');
+    var head = el('div', 'shot-head');
+    if (thumbUrl) { var im = el('img', 'thumb'); im.alt = '찍은 사진 미리보기'; im.src = thumbUrl; head.appendChild(im); }
+    var box = el('div');
+    box.appendChild(el('div', 'verdict ' + (ok ? 'ok' : 'bad'),
+      '사진 ' + no + ' · ' + (ok ? '✅ ' + codes.length + '개 읽힘' : '❌ 못 읽음')));
+    box.appendChild(el('div', 'meta', W + '×' + H + ' · ' + secs.toFixed(1) + '초'));
+    head.appendChild(box);
+    card.appendChild(head);
+
+    var lines = [];
+    lines.push('사진 ' + no + ' (' + W + '×' + H + ', ' + secs.toFixed(1) + '초): ' + (ok ? codes.length + '개 읽힘' : '못 읽음'));
+
+    var mParts = [], sevens = [];
+    codes.forEach(function (c) {
+      var it = interpret(c.text);
+      if (it.part) mParts.push(it);
+      if (it.seven) sevens.push(it.seven);
+      var cb = el('div', 'code');
+      var chips = el('div');
+      chips.appendChild(el('span', 'chip fmt', formatLabel(c.format)));
+      chips.appendChild(el('span', 'chip ' + it.level, it.kind));
+      cb.appendChild(chips);
+      cb.appendChild(el('div', 'code-text', c.text));
+      cb.appendChild(el('div', 'note', it.note));
+      cb.appendChild(el('div', 'note', '읽힌 방법: ' + c.first + (c.count > 1 ? ' 외 ' + (c.count - 1) + '곳' : '')));
+      card.appendChild(cb);
+      lines.push(' - ' + c.format + ' | ' + c.text + ' | ' + it.kind + (it.part ? ' (부품 ' + it.part + ', 시리얼 ' + it.serial + ')' : '') + ' | 읽힌 방법: ' + c.first);
+    });
+
+    mParts.forEach(function (mp) {
+      if (sevens.indexOf(mp.serial) >= 0) {
+        card.appendChild(el('div', 'cross', '✅ 막대 바코드의 시리얼(' + mp.serial + ')과 네모 바코드가 일치합니다.'));
+        lines.push(' * 막대 바코드의 시리얼과 네모 바코드 일치: ' + mp.serial);
+      }
+    });
+
+    if (!ok) {
+      card.appendChild(el('div', 'note', '바코드를 찾지 못했습니다. 밝은 곳에서 바코드가 화면에 크게 보이도록 가까이, 초점을 맞춘 뒤 다시 찍어 보세요.'));
+    }
+
+    var det = el('details');
+    det.appendChild(el('summary', '', '읽기 시도 내역 보기 (' + attLog.length + '가지 방법)'));
+    attLog.forEach(function (a) {
+      var row = el('div', 'att');
+      row.appendChild(el('span', '', a.tag));
+      row.appendChild(el('b', '', a.err ? '오류' : (a.n ? a.n + '개 읽힘' : '못 읽음')));
+      det.appendChild(row);
+      lines.push('   · ' + a.tag + ': ' + (a.err ? '오류' : (a.n ? a.n + '개' : '못 읽음')));
+    });
+    card.appendChild(det);
+
+    $('results').insertBefore(card, $('results').firstChild);
+    reports.push(lines.join('\n'));
+    updateSummary();
+  }
+
+  function addErrorCard(no, msg) {
+    var card = el('section', 'card');
+    card.appendChild(el('div', 'verdict bad', '사진 ' + no + ' · ❌ ' + msg));
+    card.appendChild(el('div', 'note', '다른 사진으로 다시 시도해 주세요.'));
+    $('results').insertBefore(card, $('results').firstChild);
+    reports.push('사진 ' + no + ': ' + msg);
+    updateSummary();
+  }
+
+  function updateSummary() {
+    $('sum-card').hidden = false;
+    $('sum-text').textContent = '지금까지 ' + shotNo + '장 중 ' + okShots + '장 읽힘';
+  }
+
+  /* ---------- 사진 선택 처리 ---------- */
+  function onPick(ev) {
+    var input = ev.target;
+    var files = Array.prototype.slice.call(input.files || []);
+    input.value = '';                           // 같은 사진을 다시 골라도 반응하도록 비움
+    files.forEach(function (f) {
+      queue = queue.then(function () { setBusy(true); return processFile(f); })
+                   .catch(function () { /* 한 장이 실패해도 다음 장은 계속 */ })
+                   .then(function () { setBusy(false); });
+    });
+  }
+  $('cam').addEventListener('change', onPick);
+  $('pick').addEventListener('change', onPick);
+
+  /* ---------- 결과 복사 ---------- */
+  $('btn-copy').addEventListener('click', function () {
+    var header = '[라벨 사진 읽기 시험 결과]\n' + $('foot-device').textContent + '\n' + $('foot-engine').textContent + '\n';
+    var text = header + '\n' + reports.join('\n\n');
+    var st = $('copy-status');
+    function done(ok) { st.textContent = ok ? '복사했습니다. 메모나 메신저에 붙여넣으세요.' : '복사하지 못했습니다. 화면을 캡처해서 보내 주세요.'; st.className = 'status ' + (ok ? 'ok' : 'bad'); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else {
+      try {
+        var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); var okc = document.execCommand('copy'); document.body.removeChild(ta); done(okc);
+      } catch (e) { done(false); }
+    }
+  });
+
+  // 시험 자동화용(화면에는 영향 없음): 처리가 모두 끝났는지 알려주는 표시
+  window.__scanTest = { idle: function () { return queue; } };
+})();
+</script>
+</body>
+</html>
