@@ -26,11 +26,6 @@
     <input class="sr" id="pick" type="file" accept="image/*" multiple aria-label="앨범에서 사진 여러 장 고르기">
     <input class="sr" id="cam" type="file" accept="image/*" capture="environment" aria-label="지금 한 장 찍기">
     <div class="row">
-      <label for="mode" style="font-size:15px">읽기 방식</label>
-      <select id="mode">
-        <option value="thorough">꼼꼼히 (기본)</option>
-        <option value="fast">빠르게</option>
-      </select>
       <button class="small-btn" id="btn-reset" type="button" style="margin-left:auto">새로 시작</button>
     </div>
     <div id="ref-box"></div>
@@ -38,13 +33,13 @@
       <div class="bar"><i id="bar"></i></div>
       <p class="status" id="prog-text" role="status"></p>
     </div>
-    <p class="status" id="engine" role="status">읽기 엔진 준비 중…</p>
+    <p class="status" id="engine" role="status">준비 중…</p>
     <ul class="tips">
-      <li>라벨(바코드)이 보이게 가까이 찍어 주세요. 한 장에 여러 개가 들어가도 됩니다.</li>
+      <li><b>바코드는 읽지 않습니다.</b> 라벨에 인쇄된 <b>REF 글자</b>(예: REF 6693522)가 보이게 가까이 찍어 주세요. 한 장에 여러 개가 들어가도 됩니다.</li>
+      <li>REF를 읽으면 <b>어느 선반에 둘지</b> 선반 순서대로 알려 줍니다. 전산에 선반이 없거나 전산에 없는 REF면 알림 창이 뜹니다.</li>
       <li>물건이 많으면 카메라 앱으로 먼저 쭉 찍은 뒤, 여기서 한 번에 고르면 빠릅니다.</li>
-      <li>결과는 <b>REF(전산 제품 코드)</b> 기준으로 정리합니다. 바코드가 REF가 아니면 "REF 연결"로 한 번만 이어 주세요.</li>
     </ul>
-    <p class="note" id="privacy-note"><b>개인정보·보안:</b> 사진은 이 폰 안에서만 읽고 저장하거나 전송하지 않습니다. (라벨에 거래처 이름이 있어도 바코드 글자만 씁니다.)</p>
+    <p class="note" id="privacy-note"><b>개인정보·보안:</b> 사진은 회사 마이크로소프트 클라우드(AI Builder)로 가서 글자만 읽고 저장하지 않습니다.</p>
   </section>
 
   <section class="card" id="sum-card" hidden aria-labelledby="h-sum">
@@ -77,7 +72,6 @@
   </footer>
 </main>
 
-<script src="../vendor/reader.iife.js"></script>
 <script src="../shared/scan_core.js"></script>
 <script src="../shared/ref_remote.js"></script>
 <script src="../shared/stock_log.js"></script>
@@ -86,9 +80,8 @@
   'use strict';
   var C = window.KtsCore, $ = C.$, E = C.el, RO = window.KtsRefOcr, LOG = window.KtsStockLog;
   var logBox = null;
-  var VENDOR = '../vendor/';
 
-  var state = { photos: [], done: {}, verify: {}, mode: 'thorough', photoShelf: {}, sent: {} };   // photoShelf: 사진 번호 → 사람이 고른 선반, sent: REF별 기록 보낸 개수
+  var state = { photos: [], done: {}, verify: {}, photoShelf: {}, sent: {}, alerted: {} };   // alerted: 이미 알림 띄운 REF   // photoShelf: 사진 번호 → 사람이 고른 선반, sent: REF별 기록 보낸 개수
   var list = C.getList();
   var queue = Promise.resolve();
   var total = 0, processed = 0, photoNo = 0, busy = false;
@@ -97,19 +90,12 @@
 
   /* ---------- 준비 ---------- */
   $('foot-device').textContent = '기기: ' + C.deviceText();
-  C.initEngine(VENDOR).then(function (ok) {
-    var e = $('engine');
-    e.textContent = ok ? '읽기 엔진 준비됨 ✅' : '이 브라우저에서는 읽기 엔진을 쓸 수 없습니다. 최신 크롬이나 사파리로 열어 주세요.';
-    e.className = 'status ' + (ok ? 'ok' : 'bad');
-    $('foot-engine').textContent = C.engineText();
-  });
   C.mountListLoader($('list-loader'), function (l) { list = l; render(); });
-  $('mode').addEventListener('change', function () { state.mode = this.value; });
-  // REF 글자 읽기(회사 AI Builder) 켜기·연결 칸 + 켜졌을 때 개인정보 안내 바꾸기
+  // REF 글자 읽기(회사 AI Builder) 연결 칸 — 바코드는 읽지 않으므로 이게 켜져 있어야 사진을 읽음
   RO.mountBox($('ref-box'), function (on) {
-    $('privacy-note').innerHTML = on
-      ? '<b>개인정보·보안:</b> REF 글자 읽기가 켜져 있어 사진이 <b>회사 마이크로소프트 클라우드(AI Builder)</b>로 가서 글자만 읽고 저장하지 않습니다. 바코드는 이 폰 안에서 읽습니다.'
-      : '<b>개인정보·보안:</b> 사진은 이 폰 안에서만 읽고 저장하거나 전송하지 않습니다. (라벨에 거래처 이름이 있어도 바코드 글자만 씁니다.)';
+    var e = $('engine');
+    e.textContent = on ? '준비됨 ✅ 사진을 고르면 회사 AI가 REF 글자를 읽습니다.' : '준비됨 — 먼저 REF 글자 읽기를 연결·켜 주세요(관리자에게 받은 설정 QR). 연결 전에는 사진을 읽을 수 없습니다.';
+    e.className = 'status ' + (on ? 'ok' : 'warn');
   });
 
   /* ---------- 사진 고르기 ---------- */
@@ -127,36 +113,31 @@
     $('prog-text').textContent = '사진 ' + (processed + 1) + '/' + total + ' 읽는 중…' + (stepN ? ' (방법 ' + (stepI + 1) + '/' + stepN + ')' : '');
   }
 
+  // 사진 한 장: 바코드는 읽지 않고, 회사 AI(텍스트 인식)로 REF·선반 라벨 글자만 읽음
   async function processFile(file) {
     var no = ++photoNo;
-    var rec = { no: no, name: file.name || ('사진 ' + no), codes: null, log: [], error: '', secs: 0, W: 0, H: 0, thumb: '', done: false };
+    var rec = { no: no, name: file.name || ('사진 ' + no), codes: [], log: [], error: '', secs: 0, W: 0, H: 0, thumb: '', done: false };
     state.photos.push(rec);
-    var ok = await C.initEngine(VENDOR);
-    if (!ok) { rec.error = '읽기 엔진을 쓸 수 없음'; rec.done = true; return; }
     var t0 = performance.now(), loaded = null;
     try {
       loaded = await C.loadImage(file);
       rec.thumb = C.thumbOf(loaded.img, 120);
-      // REF 글자 읽기(회사 AI)는 바코드 읽기와 동시에 보냄 → 기다리는 시간 줄임
-      var ocrP = null;
-      if (RO.isOn()) {
-        try {
-          var im = loaded.img, jpg = RO.toJpeg(im, 0, 0, im.naturalWidth, im.naturalHeight, 2000, 0.85);
-          rec.ocrSent = jpg.w + '×' + jpg.h;
-          ocrP = RO.recognize(jpg).then(function (lines) {
-            var s = 1 / jpg.scale;   // 보낸(줄인) 사진 좌표 → 원래 사진 좌표
-            rec.refLines = lines.map(function (l) {
-              return { t: l.t, b: l.b ? { x0: l.b.x0 * s, y0: l.b.y0 * s, x1: l.b.x1 * s, y1: l.b.y1 * s } : null };
-            });
-            rec.ocrMs = RO.stats.lastMs;
-          }, function (e) { rec.ocrErr = (e && e.message) || 'REF 글자 읽기 실패'; });
-        } catch (e) { rec.ocrErr = '사진을 보낼 수 없음'; }
-      }
-      var r = await C.decodePhoto(loaded.img, state.mode, setProgress);
-      rec.codes = r.codes; rec.log = r.log; rec.W = r.W; rec.H = r.H;
-      if (ocrP) {
-        $('prog-text').textContent = '사진 ' + (processed + 1) + '/' + total + ' REF 글자 읽는 중(회사 AI)…';
-        await ocrP;
+      var im = loaded.img;
+      rec.W = im.naturalWidth; rec.H = im.naturalHeight;
+      if (!RO.isOn()) throw new Error('REF 글자 읽기가 연결되지 않았거나 꺼져 있어 읽지 못했습니다');
+      var jpg = RO.toJpeg(im, 0, 0, rec.W, rec.H, 2000, 0.85);
+      rec.ocrSent = jpg.w + '×' + jpg.h;
+      $('prog-text').textContent = '사진 ' + (processed + 1) + '/' + total + ' REF 글자 읽는 중(회사 AI)…';
+      try {
+        var lines = await RO.recognize(jpg);
+        var s = 1 / jpg.scale;   // 보낸(줄인) 사진 좌표 → 원래 사진 좌표
+        rec.refLines = lines.map(function (l) {
+          return { t: l.t, b: l.b ? { x0: l.b.x0 * s, y0: l.b.y0 * s, x1: l.b.x1 * s, y1: l.b.y1 * s } : null };
+        });
+        rec.ocrMs = RO.stats.lastMs;
+      } catch (e) {
+        rec.ocrErr = (e && e.message) || 'REF 글자 읽기 실패';
+        rec.error = 'REF 글자 읽기 실패: ' + rec.ocrErr;
       }
     } catch (e) {
       rec.error = (e && e.message) ? e.message : '읽는 중 오류';
@@ -165,6 +146,26 @@
     }
     rec.secs = (performance.now() - t0) / 1000;
     rec.done = true;
+  }
+
+  // 사진을 다 읽은 뒤: 전산에 선반이 없는 REF·전산 목록에 없는 REF가 새로 나왔으면 알림 창(한 번에 모아서)
+  function alertNewIssues() {
+    var m = lastModel;
+    if (!m || !list) return;
+    var issues = [];
+    m.noLoc.forEach(function (a) {
+      var k = 'L:' + a.item.code;
+      if (state.alerted[k]) return;
+      state.alerted[k] = true;
+      issues.push({ kind: 'noLoc', item: a.item, suggest: a.suggest });
+    });
+    m.unknown.forEach(function (a) {
+      var k = 'U:' + a.lk;
+      if (state.alerted[k]) return;
+      state.alerted[k] = true;
+      issues.push({ kind: 'notInList', raw: a.lk });
+    });
+    if (issues.length) LOG.alertIssues(issues, locOptions(), function () { render(); });
   }
 
   function onPick(ev) {
@@ -178,7 +179,7 @@
     files.forEach(function (f) {
       queue = queue.then(function () { return processFile(f); })
         .catch(function () { /* 한 장이 실패해도 다음 장은 계속 */ })
-        .then(function () { processed++; setProgress(0, 0); render(); if (processed >= total) setBusy(false); });
+        .then(function () { processed++; setProgress(0, 0); render(); if (processed >= total) { setBusy(false); alertNewIssues(); } });
     });
   }
   $('pick').addEventListener('change', onPick);
@@ -186,7 +187,7 @@
 
   $('btn-reset').addEventListener('click', function () {
     if (busy) return;
-    state.photos = []; state.done = {}; state.verify = {}; state.photoShelf = {}; state.sent = {};
+    state.photos = []; state.done = {}; state.verify = {}; state.photoShelf = {}; state.sent = {}; state.alerted = {};
     total = processed = photoNo = 0;
     $('copy-status').textContent = '';
     render();
@@ -214,88 +215,42 @@
     return best ? { loc: best, n: n } : null;
   }
 
-  /* 사진 한 장 → 이 사진에 보인 물건(바코드 + REF 글자). 같은 라벨의 REF 글자와 바코드는 위치로 묶어 하나로 센다.
-   *  - 바코드가 REF와 같으면: 바코드 하나로 세고 'REF 글자 ✓'
-   *  - 바코드가 REF가 아니면(제조사 번호 등): REF 글자로 세고, 그 바코드 번호를 REF로 자동 연결(시리얼만 든 번호는 연결 안 함)
-   *  - 바코드가 다른 REF면: 글자를 확실히 읽었으면 글자 기준, 추정이면 바코드 기준 + '확인 필요' */
-  function photoSights(p, index, aliases) {
+  /* 사진 한 장 → 이 사진에 보인 물건. 바코드는 읽지 않고 회사 AI가 읽은 글자만 씀(2026-11-10 사장님 결정)
+   *  - 'REF 번호' → 전산 목록에 있으면 물건, 없으면 '전산 목록에 없는 REF'(알림)
+   *  - 선반 라벨 글자(KTS-1-3) → 이 사진의 선반 */
+  function photoSights(p, index) {
     var out = { sights: [], locs: [], learned: [], skips: 0, refs: [] };
-    var batch = C.refBatch(p.codes.map(function (c) { return c.text; }), index, aliases);
-    out.learned = batch.learned.slice();
-    var bars = [];
-    batch.entries.forEach(function (e, i) {
-      var c = p.codes[i];
-      if (e.info.type === 'location') { if (out.locs.indexOf(e.info.loc) < 0) out.locs.push(e.info.loc); return; }
-      if (e.skip) { out.skips++; return; }   // 같은 라벨의 다른 바코드(시리얼만/REF 아닌 번호) → 따로 세지 않음
-      bars.push({ e: e, c: c });
-    });
-    (p.refLines || []).forEach(function (l) {   // 사진 속 선반 라벨 글자(KTS-1-3)도 선반으로
-      var m = /(?:^|[^A-Z0-9])((?:KTS|KN)-\d+(?:-[0-9A-Z]+)*)/i.exec(l.t);
-      if (m) { var loc = C.normLoc(m[1]); if (out.locs.indexOf(loc) < 0) out.locs.push(loc); }
-    });
-    var marks = index ? RO.findRefs(p.refLines || [], index) : [];
-    out.refs = marks;
-    var L = Math.max(p.W, p.H) || 1;
-    marks.forEach(function (m) {
-      var near = null, nd = Infinity;
-      bars.forEach(function (b) {
-        if (!b.c.g || m.cx < 0 || b.replaced || b.confirm) return;
-        var d = Math.hypot(b.c.g.cx - m.cx, b.c.g.cy - m.cy);
-        if (d <= Math.max(b.c.g.size * 3, m.h * 25, 0.05 * L) && d < nd) { nd = d; near = b; }
-      });
-      if (!near && marks.length === 1 && bars.length === 1 && !bars[0].replaced) near = bars[0];   // 라벨 하나만 찍힌 사진
-      if (!near) return;
-      var bres = near.e.res, binfo = near.e.info, strong = m.how === 'exact' || m.how === 'fixed';
-      if (bres && C.normCode(bres.item.code) === C.normCode(m.code)) { near.confirm = m; m.used = true; return; }
-      if (!bres) {
-        near.replaced = m;
-        m.serial = binfo.serial || (binfo.type === 'seven' ? near.c.text : '');
-        if (binfo.type === 'part') out.learned.push({ from: C.lookupKey(near.c.text, binfo), to: m.code });
-        return;
-      }
-      if (strong) { near.replaced = m; m.conflict = bres.item.code; m.serial = binfo.serial || ''; return; }
-      near.conflictRef = m; m.used = true;
-    });
-    bars.forEach(function (b) {
-      if (b.replaced) { out.skips++; return; }
-      out.sights.push({ item: b.e.res ? b.e.res.item : null, res: b.e.res, info: b.e.info, raw: b.c.text, format: b.c.format,
-                        lk: C.lookupKey(b.c.text, b.e.info), serial: b.e.info.serial || '', src: 'bar',
-                        refOk: !!b.confirm, conflictRef: b.conflictRef ? b.conflictRef.code : '' });
-    });
-    marks.forEach(function (m) {
-      if (m.used) return;
+    out.locs = RO.findShelves(p.refLines || []);
+    if (!index) return out;
+    var found = RO.findAll(p.refLines || [], index);
+    out.refs = found.refs;
+    found.refs.forEach(function (m) {
       var it = index[C.normCode(m.code)];
       out.sights.push({ item: it, res: { item: it, via: 'ref' },
-                        info: { type: 'part', part: m.code, kind: 'REF 글자' + (m.how === 'fuzzy' ? '(추정)' : ''), serial: m.serial || '' },
-                        raw: 'REF ' + m.code, format: 'REF 글자', lk: C.normCode(m.code), serial: m.serial || '', src: 'ref',
-                        refHow: m.how, conflictBar: m.conflict || '' });
+                        info: { type: 'part', part: m.code, kind: 'REF 글자' + (m.how === 'fuzzy' ? '(추정)' : '') },
+                        raw: 'REF ' + m.code, format: 'REF 글자', lk: C.normCode(m.code), serial: '', src: 'ref', refHow: m.how });
+    });
+    found.unknown.forEach(function (u) {
+      out.sights.push({ item: null, res: null, info: { type: 'other', kind: 'REF 글자(전산 목록에 없음)' },
+                        raw: 'REF ' + u.raw, format: 'REF 글자', lk: u.raw, serial: '', src: 'ref', refHow: 'notInList' });
     });
     return out;
   }
 
   function analyze() {
     var index = list ? C.makeIndex(list.items) : null;
-    var aliases = C.getAliases();
+    var aliases = {};   // (바코드를 읽지 않으므로 번호 연결은 쓰지 않음)
     var agg = {}, order = [];
     var stat = { photos: state.photos.length, donePhotos: 0, okPhotos: 0, secs: 0, failed: [], serialSkips: 0 };
 
-    // 1차: 같은 사진(라벨)에서 REF(바코드·글자)와 함께 보인 다른 번호(제조사 구성품 번호 등)를 그 REF로 자동 연결
-    if (index) {
-      var learned = [];
-      state.photos.forEach(function (p) {
-        if (p.done && p.codes) learned = learned.concat(photoSights(p, index, aliases).learned);
-      });
-      if (C.learnAliases(learned)) aliases = C.getAliases();
-    }
-
-    // 2차: REF 기준으로 모으기
+    // REF 기준으로 모으기
     state.photos.forEach(function (p) {
       if (!p.done) return;
       stat.donePhotos++;
       stat.secs += p.secs;
       p.locs = []; p.used = 0; p.sights = []; p.refs = [];
       if (p.error || !p.codes) { stat.failed.push(p); return; }
-      var ps = photoSights(p, index, aliases);
+      var ps = photoSights(p, index);
       p.locs = ps.locs; p.refs = ps.refs; stat.serialSkips += ps.skips;
       ps.sights.forEach(function (s) {
         var res = s.item ? s.res : null;
@@ -482,7 +437,7 @@
       card.appendChild(ul);
 
       var row = E('div', 'row');
-      var vl = E('label', 'small-btn', '📷 선반 QR 찍어서 맞는지 확인');
+      var vl = E('label', 'small-btn', '📷 선반 라벨 찍어서 맞는지 확인');
       vl.htmlFor = 'verify-cam'; vl.setAttribute('role', 'button');
       vl.addEventListener('click', function () { verifyTarget = g.key; });
       row.appendChild(vl);
@@ -494,7 +449,7 @@
         else if (v.err) { msg = '사진을 읽지 못했습니다. 다시 찍어 주세요.'; cls = 'bad'; }
         else if (v.ok) { msg = '✅ 맞는 선반입니다 (' + v.locs.join(', ') + ')'; cls = 'ok'; }
         else if (v.locs.length) { msg = '⚠️ 찍은 선반은 ' + v.locs.join(', ') + ' 입니다. 이 물건들은 ' + g.label + ' 에 넣어야 합니다.'; cls = 'bad'; }
-        else { msg = '선반 라벨(QR)을 찾지 못했습니다. 선반 QR을 가까이 찍어 주세요.'; cls = 'bad'; }
+        else { msg = '선반 라벨 글자(예: KTS-1-3)를 찾지 못했습니다. 선반 라벨을 가까이 찍어 주세요.'; cls = 'bad'; }
         card.appendChild(E('p', 'verify-msg ' + cls, msg));
       }
       guide.appendChild(card);
@@ -550,36 +505,34 @@
       var ac = E('section', 'card');
       ac.appendChild(E('h2', 'h2', '확인이 필요한 것'));
       if (m.noLoc.length) {
-        ac.appendChild(E('h3', 'sub-h', '전산에 위치가 없는 물건 (' + m.noLoc.length + ')'));
+        ac.appendChild(E('h3', 'sub-h', '⚠ 등록된 선반이 없는 물건 (' + m.noLoc.length + ')'));
         var ul1 = E('ul', 'att-list');
         m.noLoc.forEach(function (a) {
           var li = E('li'), d = E('div', 'grow');
-          d.appendChild(E('b', 'iref', 'REF ' + a.item.code + '  ×' + a.qty));
+          d.appendChild(E('b', 'iref unk', 'REF ' + a.item.code + '  ×' + a.qty));
           d.appendChild(E('span', 'meta', (a.item.name ? a.item.name + ' · ' : '') + photoText(a.photoList)));
-          d.appendChild(E('span', 'meta', a.suggest
-            ? '후보: ' + a.suggest.loc + ' (같은 제품군 "' + a.item.group + '" 품목이 가장 많은 선반, ' + a.suggest.n + '개) — 정한 뒤 전산 위치도 고쳐 주세요.'
-            : '후보 없음 — 직접 정한 뒤 전산 위치도 고쳐 주세요.'));
-          li.appendChild(d); ul1.appendChild(li);
+          var req = LOG.getShelfReq(a.item.code);
+          d.appendChild(E('span', 'meta', req ? '📍 이 폰에서 선반 ' + req.shelf + ' 로 등록 요청함(전산 반영 전) — 우선 그 선반에 두세요.'
+            : '전산에 선반이 없습니다. 선반을 등록 요청하거나 REF·전산 정보를 확인해 주세요.' +
+              (a.suggest ? ' 후보: ' + a.suggest.loc + ' (같은 제품군이 가장 많은 선반)' : '')));
+          li.appendChild(d);
+          var rb = E('button', 'small-btn', req ? '다시 요청' : '선반 등록 요청'); rb.type = 'button';
+          rb.addEventListener('click', function () {
+            LOG.alertIssues([{ kind: 'noLoc', item: a.item, suggest: a.suggest }], locOptions(), function () { render(); });
+          });
+          li.appendChild(rb);
+          ul1.appendChild(li);
         });
         ac.appendChild(ul1);
       }
       if (m.unknown.length) {
-        ac.appendChild(E('h3', 'sub-h', list ? 'REF 미확인 — 전산 REF가 아닌 번호 (' + m.unknown.length + ')' : '읽은 바코드 (' + m.unknown.length + ')'));
+        ac.appendChild(E('h3', 'sub-h', '전산 목록에 없는 REF (' + m.unknown.length + ')'));
         var ul2 = E('ul', 'att-list');
         m.unknown.forEach(function (a) {
           var li = E('li'), d = E('div', 'grow');
-          d.appendChild(E('b', 'iref unk', 'REF 미확인  ×' + a.qty));
-          d.appendChild(E('span', 'meta code-line', '바코드 ' + a.raw));
-          var meta = a.info.kind + ' · ' + C.formatLabel(a.format) + ' · ' + photoText(a.photoList);
-          if (a.info.part && a.info.part !== a.raw) meta += ' · 바코드 속 번호 ' + a.info.part;
-          d.appendChild(E('span', 'meta', meta));
-          if (a.info.type === 'seven') d.appendChild(E('span', 'meta', '시리얼 번호일 수도 있습니다.'));
+          d.appendChild(E('b', 'iref unk', a.raw + '  ×' + a.qty));
+          d.appendChild(E('span', 'meta', photoText(a.photoList) + ' · 라벨의 REF 번호가 맞는지, 전산 목록(주간 파일)이 최신인지 확인해 주세요.'));
           li.appendChild(d);
-          if (list) {
-            var lb = E('button', 'small-btn', 'REF 연결'); lb.type = 'button';
-            lb.addEventListener('click', function () { C.openLinkDialog(list, a.lk, a.info.kind, function () { render(); }); });
-            li.appendChild(lb);
-          }
           ul2.appendChild(li);
         });
         ac.appendChild(ul2);
@@ -592,25 +545,10 @@
           if (p.thumb) { var im = E('img', 'thumb'); im.alt = '사진 ' + p.no + ' 미리보기'; im.src = p.thumb; li.appendChild(im); }
           var d = E('div', 'grow');
           d.appendChild(E('b', '', '사진 ' + p.no));
-          d.appendChild(E('span', 'meta', p.error ? p.error : (p.locs && p.locs.length ? '선반 라벨(' + p.locs.join(', ') + ')만 읽혔습니다.' : '바코드와 REF 글자를 찾지 못했습니다.') + ' 라벨이 보이게 가까이 다시 찍어 주세요.'));
-          if (p.ocrErr) d.appendChild(E('span', 'meta', 'REF 글자 읽기 실패: ' + p.ocrErr));
+          d.appendChild(E('span', 'meta', p.error ? p.error : (p.locs && p.locs.length ? '선반 라벨(' + p.locs.join(', ') + ')만 읽혔습니다.' : 'REF 글자를 찾지 못했습니다.') + ' 라벨의 REF 글자가 보이게 가까이 다시 찍어 주세요.'));
           li.appendChild(d); ul3.appendChild(li);
         });
         ac.appendChild(ul3);
-      }
-      if (m.usedAliases.length) {
-        ac.appendChild(E('h3', 'sub-h', 'REF로 연결해 둔 번호 (' + m.usedAliases.length + ')'));
-        var ul4 = E('ul', 'att-list');
-        m.usedAliases.forEach(function (a) {
-          var li = E('li'), d = E('div', 'grow');
-          d.appendChild(E('b', '', a.from + ' → REF ' + a.item.code));
-          d.appendChild(E('span', 'meta', (a.item.name || '') + (a.auto ? ' · 같은 라벨의 REF 바코드(같은 시리얼)를 보고 자동 연결' : ' · 직접 연결')));
-          li.appendChild(d);
-          var ub = E('button', 'small-btn', '연결 풀기'); ub.type = 'button';
-          ub.addEventListener('click', function () { C.removeAlias(a.from); render(); });
-          li.appendChild(ub); ul4.appendChild(li);
-        });
-        ac.appendChild(ul4);
       }
       att.appendChild(ac);
     }
@@ -624,37 +562,30 @@
       var head = '사진 ' + p.no + ' · ';
       if (!p.done) head += '읽는 중…';
       else if (p.error) head += '❌ ' + p.error;
-      else head += (p.codes.length ? p.codes.length + '개 읽힘' : '못 읽음') + ' · ' + p.secs.toFixed(1) + '초 · ' + p.W + '×' + p.H;
+      else head += (p.refs && p.refs.length ? 'REF ' + p.refs.length + '개 읽힘' : 'REF 못 찾음') + ' · ' + p.secs.toFixed(1) + '초 · ' + p.W + '×' + p.H;
       d.appendChild(E('b', '', head));
-      if (p.done && !p.error) {   // REF 글자 읽기 결과(회사 AI)
-        var rt;
-        if (p.ocrErr) rt = '❌ REF 글자 읽기 실패: ' + p.ocrErr;
-        else if (p.refLines) rt = (p.refs && p.refs.length
-          ? 'REF 글자: ' + p.refs.map(function (m) { return m.code + '(' + HOW[m.how] + ')'; }).join(', ')
-          : 'REF 글자 없음') + ' · 읽은 글 ' + p.refLines.length + '줄' + (p.ocrMs ? ' · ' + (p.ocrMs / 1000).toFixed(1) + '초' : '');
-        if (rt) d.appendChild(E('div', 'meta', rt));
+      if (p.done && !p.error && p.refLines) {   // REF 글자 읽기 결과(회사 AI)
+        d.appendChild(E('div', 'meta', (p.refs && p.refs.length
+          ? 'REF: ' + p.refs.map(function (m) { return m.code + '(' + HOW[m.how] + ')'; }).join(', ')
+          : 'REF 없음') + (p.locs && p.locs.length ? ' · 선반 라벨 ' + p.locs.join(', ') : '') + ' · 읽은 글 ' + p.refLines.length + '줄'));
       }
       if (list && p.done && !p.error) {   // 선반 대조용: 이 사진의 선반 고르기(선반 QR이 찍혔으면 그것이 기본)
         var sel = E('select', 'shelf-pick');
         sel.setAttribute('aria-label', '사진 ' + p.no + '의 선반');
         var auto = (p.locs && p.locs[0]) || '';
-        var o0 = E('option', '', auto ? '선반 QR: ' + auto : '이 사진의 선반 고르기(대조용)'); o0.value = '';
+        var o0 = E('option', '', auto ? '선반 라벨: ' + auto : '이 사진의 선반 고르기(대조용)'); o0.value = '';
         sel.appendChild(o0);
         locOptions().forEach(function (l) { var o = E('option', '', l); o.value = l; sel.appendChild(o); });
         sel.value = state.photoShelf[p.no] || '';
         sel.addEventListener('change', function () { if (this.value) state.photoShelf[p.no] = this.value; else delete state.photoShelf[p.no]; render(); });
         d.appendChild(sel);
       }
-      (p.codes || []).forEach(function (c) {
-        d.appendChild(E('div', 'code-line', c.text));
-        d.appendChild(E('div', 'meta', C.formatLabel(c.format) + ' · ' + C.interpret(c.text).kind + ' · 처음 읽힌 방법: ' + c.first));
-      });
       row.appendChild(d);
       pc.appendChild(row);
     });
   }
 
-  /* ---------- 선반 QR로 확인 ---------- */
+  /* ---------- 선반 라벨 글자로 확인(바코드·QR은 읽지 않음, 회사 AI가 'KTS-1-3' 글자를 읽음) ---------- */
   $('verify-cam').addEventListener('change', async function (ev) {
     var f = ev.target.files && ev.target.files[0];
     ev.target.value = '';
@@ -666,11 +597,10 @@
     render();
     var loaded = null;
     try {
-      await C.initEngine(VENDOR);
+      if (!RO.isOn()) throw new Error('REF 글자 읽기 연결 필요');
       loaded = await C.loadImage(f);
-      var r = await C.decodePhoto(loaded.img, 'fast');
-      var locs = [];
-      r.codes.forEach(function (c) { var i = C.interpret(c.text); if (i.type === 'location' && locs.indexOf(i.loc) < 0) locs.push(i.loc); });
+      var im = loaded.img, jpg = RO.toJpeg(im, 0, 0, im.naturalWidth, im.naturalHeight, 2000, 0.85);
+      var locs = RO.findShelves(await RO.recognize(jpg));
       state.verify[gk] = { ok: locs.some(function (l) { return C.locMatches(g.label, l); }), locs: locs };
     } catch (e) {
       state.verify[gk] = { err: true };
@@ -686,7 +616,7 @@
     var L = [];
     L.push('[사진 선반 안내 시험 결과]');
     L.push('기기: ' + C.deviceText());
-    L.push(C.engineText() + ' · 읽기 방식: ' + ($('mode').value === 'fast' ? '빠르게' : '꼼꼼히'));
+    L.push('읽는 방법: REF 글자만(회사 AI Builder 텍스트 인식), 바코드 안 읽음');
     L.push('전산 목록: ' + (list ? list.items.length + '개 품목' + (list.sheet ? ' (' + list.sheet + ')' : '') : '없음'));
     L.push('REF 글자 읽기(회사 AI): ' + (RO.isOn() ? '켜짐' : (RO.getConf() ? '꺼짐' : '연결 안 됨')) +
            ' · 보냄 ' + RO.stats.calls + ' · 성공 ' + RO.stats.ok + ' · 실패 ' + RO.stats.fail + (RO.stats.lastErr ? ' (마지막 오류: ' + RO.stats.lastErr + ')' : ''));
@@ -717,9 +647,6 @@
       if (p.ocrErr) L.push('   REF 글자 읽기 실패: ' + p.ocrErr);
       else if (p.refLines) L.push('   REF 글자: ' + ((p.refs || []).map(function (m) { return m.code + '(' + m.how + ', 읽은 글 "' + m.raw + '")'; }).join(', ') || '없음') +
                                   ' · 읽은 글 ' + p.refLines.length + '줄 · ' + ((p.ocrMs || 0) / 1000).toFixed(1) + '초');
-      (p.codes || []).forEach(function (c) { L.push('   · ' + c.format + ' | ' + c.text + ' | 처음 읽힌 방법: ' + c.first); });
-      var slow = (p.log || []).map(function (x) { return x.tag + ' ' + (x.err ? '오류' : x.n + '개') + ' ' + x.ms + 'ms'; });
-      if (slow.length) L.push('   (방법별: ' + slow.join(' / ') + ')');
     });
     C.copyText(L.join('\n')).then(function (ok) {
       var st = $('copy-status');
