@@ -245,6 +245,39 @@
     });
     return outM;
   };
+  // REF 찾기 + 'REF' 뒤에 번호는 있는데 전산 목록에 없는 것도 따로 알려 줌(번호 확인·목록 최신화 안내용)
+  R.findAll = function (lines, index) {
+    var refs = R.findRefs(lines, index), unknown = [];
+    if (!index) return { refs: refs, unknown: unknown };
+    lines.forEach(function (line, li) {
+      var toks = line.t.split(/\s+/).filter(Boolean);
+      for (var i = 0; i < toks.length; i++) {
+        var num = null, jm = KEY_JOIN.exec(toks[i]);
+        if (jm) num = jm[2];
+        else if (KEY_RE.test(toks[i])) {
+          num = toks[i + 1] || null;
+          if (!num) { var near = R.neighbor(lines, li); num = near ? near.t.split(/\s+/)[0] : null; }
+        }
+        if (!num) continue;
+        var t = clean(num);
+        // REF 번호는 숫자가 4개 이상(예: 'REPLACEMENT'의 REP+LACEMENT 같은 낱말을 REF로 착각하지 않게 - 2026-11-10 시험에서 발견)
+        if (t.length < 4 || (t.match(/\d/g) || []).length < 4 || /^(SN|LOT)$/.test(t)) continue;
+        if (R.matchCode(t, index) || refs.some(function (r) { return C.normCode(r.raw) === t || C.normCode(r.code) === t; })) continue;
+        if (!unknown.some(function (u) { return u.raw === t; })) unknown.push({ raw: t });
+      }
+    });
+    return { refs: refs, unknown: unknown };
+  };
+  // 글자 줄에서 선반 라벨(KTS-1-3, KN-2-1 …) 찾기
+  R.findShelves = function (lines) {
+    var out = [];
+    lines.forEach(function (l) {
+      var re = /(?:^|[^A-Z0-9])((?:KTS|KN)\s*-\s*\d+(?:\s*-\s*[0-9A-Z]+)*)/gi, m;
+      while ((m = re.exec(l.t))) { var loc = C.normLoc(m[1].replace(/\s+/g, '')); if (out.indexOf(loc) < 0) out.push(loc); }
+    });
+    return out;
+  };
+
   R.neighbor = function (lines, li) {
     var a = lines[li], ca = center(a.b);
     if (ca) {
