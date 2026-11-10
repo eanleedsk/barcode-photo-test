@@ -68,6 +68,10 @@ footer{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
 
 /* REF 글자 읽기(회사 AI) 설정 칸 */
 .ref-box{margin-top:10px;padding:8px 12px 10px;border:1px dashed var(--line);border-radius:10px;background:var(--bg)}
+.team-pass{margin-top:8px}
+.team-pass input{width:100%;min-height:48px;font:inherit;font-size:18px;letter-spacing:.06em;border-radius:10px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);padding:0 12px}
+.team-pass .btn{margin-top:8px}
 .ref-box .check{margin-top:0}
 
 /* 확인 필요 알림 창 */
