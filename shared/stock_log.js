@@ -42,6 +42,88 @@
     });
   };
 
+  /* ---------- 선반 등록 요청(전산에 선반이 없는 REF) ----------
+   * 화면은 전산(SFDC) 기본위치를 바꿀 수 없음 → 회사 엑셀에 '선반 등록 요청' 줄로 남기고, 이 폰에서는 바로 안내에 씀 */
+  var SHELF_REQ_KEY = 'ktsInv.shelfReq.v1';
+  function shelfReqs() { try { return JSON.parse(localStorage.getItem(SHELF_REQ_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  L.getShelfReq = function (ref) { return shelfReqs()[C.normCode(ref)] || null; };
+  L.sendShelfRequest = function (item, shelf, memo) {
+    var conf = R.getConf();
+    if (!conf || !conf.l) return Promise.reject(new Error('기록이 연결되지 않았습니다(새 설정 링크 필요)'));
+    if (!L.getWho()) return Promise.reject(new Error('먼저 이름을 입력해 주세요'));
+    var body = { key: conf.k, op: 'log', who: L.getWho(), dir: 'shelf', memo: String(memo || '').slice(0, 200), device: C.deviceText(),
+                 entries: [{ ref: item.code, name: item.name || '', qty: 0, shelf: shelf, loc: item.loc || '', serial: '', how: 'REF 글자' }] };
+    return fetch(conf.l, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(body),
+                           cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' })
+      .then(function (res) {
+        return res.text().then(function (txt) {
+          var j = null; try { j = JSON.parse(txt); } catch (e) { /* 아래 */ }
+          if (!res.ok || !j || !j.ok) throw new Error(res.status === 403 ? '접속 키·이름·내용을 확인해 주세요' : (j && j.error) ? String(j.error).slice(0, 200) : ('응답 ' + res.status));
+          var all = shelfReqs();
+          all[C.normCode(item.code)] = { shelf: shelf, at: j.time || '' };
+          try { localStorage.setItem(SHELF_REQ_KEY, JSON.stringify(all)); } catch (e) { /* 무시 */ }
+          return j;
+        });
+      });
+  };
+
+  /* ---------- 알림 창: 선반이 없는 REF / 전산 목록에 없는 REF ----------
+   * issues: [{kind:'noLoc', item, suggest:{loc,n}|null} | {kind:'notInList', raw}]
+   * locOptions: 선반 고르기 목록, onDone: 등록 요청 후 화면 다시 그리기 */
+  L.alertIssues = function (issues, locOptions, onDone) {
+    if (!issues || !issues.length) return;
+    var E = C.el;
+    var old = document.getElementById('issue-alert');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (navigator.vibrate) { try { navigator.vibrate([80, 60, 80]); } catch (e) { /* 무시 */ } }
+    var ov = E('div', 'overlay'); ov.id = 'issue-alert';
+    ov.setAttribute('role', 'alertdialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', '확인이 필요합니다');
+    var sh = E('div', 'sheet');
+    sh.appendChild(E('h2', 'h2 alert-title', '⚠ 확인이 필요합니다 (' + issues.length + '건)'));
+    issues.forEach(function (is) {
+      var box = E('div', 'issue');
+      if (is.kind === 'noLoc') {
+        box.appendChild(E('b', 'iref unk', 'REF ' + is.item.code + ' — 등록된 선반이 없습니다'));
+        if (is.item.name) box.appendChild(E('p', 'note', is.item.name));
+        var req = L.getShelfReq(is.item.code);
+        box.appendChild(E('p', 'note', req ? '이 폰에서 이미 선반 ' + req.shelf + ' 로 등록 요청했습니다(전산 반영 전).'
+          : '전산(SFDC)에 이 물건의 기본위치(선반)가 없습니다. 선반을 등록 요청하거나, REF 번호·전산 정보를 확인해 주세요.'));
+        if (is.suggest) box.appendChild(E('p', 'note', '후보: ' + is.suggest.loc + ' (같은 제품군이 가장 많은 선반)'));
+        var row = E('div', 'row');
+        var sel = E('select', 'shelf-pick'); sel.setAttribute('aria-label', '등록 요청할 선반');
+        var o0 = E('option', '', '선반 고르기'); o0.value = ''; sel.appendChild(o0);
+        (locOptions || []).forEach(function (l) { var o = E('option', '', l); o.value = l; sel.appendChild(o); });
+        if (is.suggest) sel.value = is.suggest.loc;
+        box.appendChild(sel);
+        var memo = E('input'); memo.type = 'text'; memo.placeholder = '메모 (선택)'; memo.maxLength = 200;
+        memo.className = 'issue-memo';
+        box.appendChild(memo);
+        var send = E('button', 'small-btn', '📍 이 선반으로 등록 요청'); send.type = 'button';
+        var st = E('p', 'status');
+        row.appendChild(send); box.appendChild(row); box.appendChild(st);
+        send.addEventListener('click', function () {
+          if (!sel.value) { st.textContent = '선반을 골라 주세요.'; st.className = 'status bad'; return; }
+          send.disabled = true; st.textContent = '보내는 중…'; st.className = 'status';
+          L.sendShelfRequest(is.item, sel.value, memo.value).then(function () {
+            st.textContent = '✅ 선반 ' + sel.value + ' 등록 요청을 회사 엑셀에 남겼습니다. 담당자가 전산에 반영합니다.'; st.className = 'status ok';
+            if (onDone) onDone();
+          }, function (e) {
+            send.disabled = false; st.textContent = '❌ ' + ((e && e.message) || e); st.className = 'status bad';
+          });
+        });
+      } else {
+        box.appendChild(E('b', 'iref unk', 'REF ' + is.raw + ' — 전산 목록에 없는 번호'));
+        box.appendChild(E('p', 'note', '라벨의 REF 번호가 맞는지 다시 확인해 주세요. 맞다면 전산 목록(주간 파일)이 최신인지, 전산에 등록된 품목인지 확인이 필요합니다.'));
+      }
+      sh.appendChild(box);
+    });
+    var close = E('button', 'btn ghost', '확인했어요 (닫기)'); close.type = 'button'; close.id = 'issue-close'; close.style.marginTop = '12px';
+    close.addEventListener('click', function () { if (ov.parentNode) ov.parentNode.removeChild(ov); });
+    sh.appendChild(close);
+    ov.appendChild(sh);
+    document.body.appendChild(ov);
+  };
+
   /* 화면 칸: getItems() → {items:[...], skipped: REF 미확인 수} / onSent(items) → 보낸 것 표시 */
   L.mountBox = function (container, getItems, onSent) {
     var E = C.el, dir = '';
