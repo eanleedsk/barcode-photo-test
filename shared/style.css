@@ -169,6 +169,13 @@ ul.items{list-style:none;margin:8px 0 0;padding:0}
 .video-box .flash.warn{background:rgba(234,118,0,.5);opacity:1;transition:none}
 .video-box .flash.shelf{background:rgba(36,87,166,.5);opacity:1;transition:none}
 .video-box .idle{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;text-align:center;padding:16px}
+/* 자동 읽기 결과(아직 안 셈) — 카메라 화면 아래쪽에 겹쳐 보여 줌 */
+.video-box .peek{position:absolute;left:8px;right:8px;bottom:8px;padding:7px 10px;border-radius:10px;background:rgba(10,37,64,.86);color:#fff;
+  border-left:5px solid #9FB0C3;pointer-events:none;font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.video-box .peek.ok{border-left-color:#3DDC84}
+.video-box .peek.warn{border-left-color:#FFB86B}
+.video-box .peek .pt{font-weight:800;font-size:16px}
+.video-box .peek .pm{font-size:13px;opacity:.92}
 .shelf-now{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--infobg);color:var(--info);font-size:15px}
 .shelf-now b{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:18px}
 .counters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
