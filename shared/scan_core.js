@@ -378,6 +378,38 @@
     return Core.splitLocs(itemLoc).some(function (l) { return l === s || l.indexOf(s + '-') === 0 || s.indexOf(l + '-') === 0; });
   };
 
+  // 전산에 선반이 없는 물건의 선반 후보 = 같은 제품군 물건이 가장 많은 선반(첫 위치 기준)
+  var suggestCache = { list: null, map: null };
+  Core.suggestShelf = function (list, item) {
+    if (!list || !item || !item.group) return null;
+    if (suggestCache.list !== list) {
+      var m = {};
+      list.items.forEach(function (it) {
+        var first = it.group && it.loc ? Core.splitLocs(it.loc)[0] : '';
+        if (!first) return;
+        var g = m[it.group] || (m[it.group] = {});
+        g[first] = (g[first] || 0) + 1;
+      });
+      suggestCache = { list: list, map: m };
+    }
+    var g = suggestCache.map[item.group], best = null, n = 0;
+    if (!g) return null;
+    Object.keys(g).forEach(function (k) { if (g[k] > n || (g[k] === n && Core.compareLoc(k, best) < 0)) { best = k; n = g[k]; } });
+    return best ? { loc: best, n: n } : null;
+  };
+  // 선반 고르기 목록 = 전산 목록에 나오는 위치들(창고 도는 순서)
+  var locOptCache = { list: null, opts: [] };
+  Core.locOptions = function (list) {
+    if (locOptCache.list !== list) {
+      var seen = {}, opts = [];
+      (list ? list.items : []).forEach(function (it) {
+        Core.splitLocs(it.loc).forEach(function (l) { if (/^(KTS|KN)-/.test(l) && !seen[l]) { seen[l] = true; opts.push(l); } });
+      });
+      locOptCache = { list: list, opts: opts.sort(Core.compareLoc) };
+    }
+    return locOptCache.opts;
+  };
+
   /* ============================== 저장(목록·번호 연결) ============================== */
   var LIST_KEY = 'ktsInv.list.v1', ALIAS_KEY = 'ktsInv.alias.v1', ALIAS_AUTO_KEY = 'ktsInv.aliasAuto.v1', ALIAS_BLOCK_KEY = 'ktsInv.aliasBlock.v1';
   function sget(store, k) { try { return global[store].getItem(k); } catch (e) { return null; } }
