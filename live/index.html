@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
-<!-- 카메라 화면·목록은 같은 주소와 회사 Power Automate(REF 글자 읽기, 켰을 때만)로만 보낼 수 있게 브라우저 차원에서 막는다. -->
+<!-- 카메라 화면·목록은 같은 주소와 회사 Power Automate(REF 글자 읽기·입출고 기록)로만 보낼 수 있게 브라우저 차원에서 막는다. -->
 <meta http-equiv="Content-Security-Policy" content="connect-src 'self' https://*.environment.api.powerplatform.com https://*.logic.azure.com; img-src 'self' data: blob:; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'self'">
 <title>카메라 스캔 시험</title>
 <link rel="stylesheet" href="../shared/style.css">
@@ -12,19 +12,14 @@
 <body>
 <header>
   <a class="back" href="../">← 시험 첫 화면</a>
-  <h1>카메라 스캔 시험</h1>
-  <p>카메라를 켜 두고 라벨을 네모 칸에 맞춘 뒤 "찍기"를 누르면 읽습니다.</p>
+  <h1>카메라 스캔 시험 (REF 글자)</h1>
+  <p>라벨의 REF 글자를 네모 칸에 맞추고 "찍기"를 누르면, 회사 AI가 읽고 어느 선반인지 알려 줍니다.</p>
 </header>
 
 <main class="wrap">
   <section class="card" aria-labelledby="h-cam">
     <h2 class="h2" id="h-cam">카메라</h2>
-    <div class="seg" role="radiogroup" aria-label="찍는 방식">
-      <button type="button" id="mode-button" role="radio" aria-checked="true">📷 버튼 눌러 찍기</button>
-      <button type="button" id="mode-auto" role="radio" aria-checked="false">⚡ 자동 연속</button>
-    </div>
-    <p class="note" id="mode-note"></p>
-    <div class="video-box" id="video-box" style="margin-top:10px">
+    <div class="video-box" id="video-box">
       <video id="vid" playsinline muted autoplay></video>
       <div class="aim" id="aim" aria-hidden="true"><span class="aim-tip" id="aim-tip"></span></div>
       <div class="flash" id="flash" aria-hidden="true"></div>
@@ -42,13 +37,13 @@
       <button class="small-btn" id="btn-sound-test" type="button" style="margin-left:auto">🔊 소리 시험</button>
     </div>
     <div id="ref-box"></div>
-    <p class="status" id="cam-status" role="status">읽기 엔진 준비 중…</p>
-    <div class="shelf-now">현재 선반: <b id="shelf">없음</b><br><span style="font-size:13px">선반 QR을 먼저 찍으면, 다음에 읽는 물건을 그 선반으로 묶어 셉니다.</span></div>
+    <p class="status" id="cam-status" role="status">준비 중…</p>
+    <div class="shelf-now">현재 선반: <b id="shelf">없음</b><br><span style="font-size:13px">선반 라벨(KTS-1-3 같은 글자)을 먼저 찍으면, 다음에 찍는 물건을 그 선반으로 묶어 셉니다.</span></div>
     <div class="last-scan" id="last" aria-live="polite"><div class="m">아직 읽은 것이 없습니다.</div></div>
     <div class="counters">
-      <div class="stat"><b id="n-scan">0</b><span>읽은 횟수</span></div>
-      <div class="stat"><b id="n-kind">0</b><span>물건 종류</span></div>
-      <div class="stat"><b id="n-rate">–</b><span>1분당 개수</span></div>
+      <div class="stat"><b id="n-scan">0</b><span>읽은 물건</span></div>
+      <div class="stat"><b id="n-kind">0</b><span>REF 종류</span></div>
+      <div class="stat"><b id="n-issue">0</b><span>확인 필요</span></div>
     </div>
   </section>
 
@@ -67,11 +62,11 @@
   <section class="card" aria-labelledby="h-how">
     <h2 class="h2" id="h-how">사용법·시험 방법</h2>
     <ul class="tips">
-      <li><b>버튼 눌러 찍기(기본):</b> 라벨을 네모 칸 안에 맞추고 "찍기"(또는 화면 터치)를 누를 때만 셉니다. 네모 테두리가 초록색이면 읽을 수 있는 상태입니다.</li>
-      <li>같은 물건이 여러 개면 그 수만큼 "찍기"를 누르세요. 네모 칸 밖의 라벨은 세지 않습니다.</li>
-      <li><b>자동 연속:</b> 비추기만 해도 계속 읽습니다. 빠르지만 지나가는 라벨도 읽힐 수 있습니다.</li>
-      <li>카메라를 켤 때 "삑" 한 번이 나면 소리가 정상입니다. 안 나면 "🔊 소리 시험"을 누르고 폰 음량 버튼을 올려 주세요.</li>
-      <li>시험: 라벨 10개를 찍어 보고, 걸린 시간과 잘못 읽은 것이 있는지 "결과 복사"로 보내 주세요.</li>
+      <li><b>바코드는 읽지 않습니다.</b> 라벨에 인쇄된 <b>REF 글자</b>(예: REF 6693522)가 네모 칸 안에 크게 보이게 맞추고 "찍기"(또는 화면 터치)를 누르세요.</li>
+      <li>찍을 때마다 회사 AI가 글자를 읽습니다(몇 초 걸림). 읽으면 <b>"📍 선반 ○○"</b>으로 놓을 곳을 알려 줍니다.</li>
+      <li>전산에 선반이 없거나 전산 목록에 없는 REF면 <b>알림 창</b>이 뜹니다. 선반을 등록 요청하거나 번호·전산 정보를 확인해 주세요.</li>
+      <li>같은 물건이 여러 개면 그 수만큼 "찍기"를 누르세요.</li>
+      <li>시험: 라벨 몇 개를 찍어 보고 "결과 복사"로 보내 주세요.</li>
     </ul>
     <div class="row"><button class="small-btn" id="btn-copy" type="button">결과 복사 (시험 결과 보내기용)</button></div>
     <p class="status" id="copy-status" role="status"></p>
@@ -80,12 +75,10 @@
   <div id="list-loader"></div>
 
   <footer>
-    <div id="foot-engine"></div>
     <div id="foot-device"></div>
   </footer>
 </main>
 
-<script src="../vendor/reader.iife.js"></script>
 <script src="../shared/scan_core.js"></script>
 <script src="../shared/ref_remote.js"></script>
 <script src="../shared/stock_log.js"></script>
@@ -93,75 +86,43 @@
 (function () {
   'use strict';
   var C = window.KtsCore, $ = C.$, E = C.el, RO = window.KtsRefOcr, LOG = window.KtsStockLog;
-  var logBox = null;
-  var OCR_WAIT_MS = 25000;      // (버튼) REF 글자 읽기(회사 AI)를 기다리는 최대 시간
-  var VENDOR = '../vendor/';
-  var GAP_MS = 1200;            // (자동 연속) 같은 바코드가 이 시간 이상 안 보였다가 다시 보이면 새로 센다
-  var SERIAL_WINDOW_MS = 3000;  // 같은 라벨의 시리얼 바코드로 볼 시간
-  var MAX_SIDE = 1280;          // 카메라 화면을 이 크기로 줄여서 읽음(속도)
+  var OCR_WAIT_MS = 25000;      // REF 글자 읽기(회사 AI)를 기다리는 최대 시간
   var AIM = { l: 0.08, r: 0.08, t: 0.24, b: 0.24 };   // 네모 칸 위치(화면 비율) — style.css .video-box .aim 과 같아야 함
-  var AIM_MARGIN = 0.04;        // 네모 칸보다 조금 넓게 읽기(라벨 끝이 살짝 걸쳐도 읽히게)
-  var SHOT_MAX_MS = 1500;       // (버튼) 누른 뒤 이 시간 안에 못 읽으면 '못 읽음'
-  var SHOT_COLLECT_MS = 300;    // (버튼) 처음 읽힌 뒤 이만큼 더 모아서 같은 라벨의 다른 바코드도 같이 읽음
-  var MODE_KEY = 'ktsInv.scanMode.v1';
+  var AIM_MARGIN = 0.04;        // 네모 칸보다 조금 넓게 보냄(글자 끝이 살짝 걸쳐도 읽히게)
 
   var list = C.getList(), index = list ? C.makeIndex(list.items) : null;
-  var vid = $('vid'), canvas = document.createElement('canvas');
-  var ctx = canvas.getContext('2d', { willReadFrequently: true });
-  var stream = null, running = false, busy = false, timer = null, torchOn = false;
-  var mode = 'button', shot = null, seenUntil = 0;
+  var vid = $('vid');
+  var stream = null, running = false, torchOn = false, shot = null, logBox = null;
   var S;   // 시험 기록
 
   function resetStats() {
-    S = { startedAt: Date.now(), firstScan: 0, lastScan: 0, frames: 0, decodeMs: 0, events: [], lastSeen: {}, recentSerials: {},
-          serialEv: {}, shelf: '', res: '', shots: 0, misses: 0, ocrCalls: 0, ocrFails: 0 };   // serialEv: 시리얼 → 그 시리얼로 센 기록(같은 물건은 한 번만)
+    S = { firstScan: 0, lastScan: 0, events: [], shelf: '', res: '', shots: 0, misses: 0, ocrCalls: 0, ocrFails: 0, issues: 0, lastShotT: 0 };
   }
   resetStats();
 
   $('foot-device').textContent = '기기: ' + C.deviceText();
   C.mountListLoader($('list-loader'), function (l) { list = l; index = l ? C.makeIndex(l.items) : null; renderAll(); });
-  C.initEngine(VENDOR).then(function (ok) {
-    $('foot-engine').textContent = C.engineText();
-    status(ok ? '준비됨. "카메라 켜기"를 눌러 주세요.' : '이 브라우저에서는 읽기 엔진을 쓸 수 없습니다. 최신 크롬이나 사파리로 열어 주세요.', ok ? '' : 'bad');
-  });
-
   function status(msg, cls) { var s = $('cam-status'); s.textContent = msg; s.className = 'status ' + (cls || ''); }
-  RO.mountBox($('ref-box'));   // REF 글자 읽기(회사 AI Builder) 켜기·연결 — '버튼 눌러 찍기' 때만 씀
-
-  /* ---------- 찍는 방식(버튼 / 자동) ---------- */
-  function setMode(m) {
-    mode = m === 'auto' ? 'auto' : 'button';
-    $('mode-button').setAttribute('aria-checked', mode === 'button' ? 'true' : 'false');
-    $('mode-auto').setAttribute('aria-checked', mode === 'auto' ? 'true' : 'false');
-    $('mode-note').textContent = mode === 'button'
-      ? '라벨을 네모 칸에 맞추고 "찍기"를 누를 때만 셉니다. 같은 물건이 여러 개면 그 수만큼 누르세요.'
-      : '비추기만 해도 계속 읽습니다. 빠르지만 지나가는 라벨도 읽힐 수 있습니다.';
-    if (mode === 'auto') cancelShot();
-    S.lastSeen = {};                                     // 방식을 바꾸면 '이미 본 것' 기억을 비움
-    try { localStorage.setItem(MODE_KEY, mode); } catch (e) { /* 저장 안 돼도 동작 */ }
-    updateButtons();
-  }
-  $('mode-button').addEventListener('click', function () { setMode('button'); });
-  $('mode-auto').addEventListener('click', function () { setMode('auto'); });
+  RO.mountBox($('ref-box'), function () { updateButtons(); });   // REF 글자 읽기(회사 AI Builder) 연결 칸
+  status(RO.getConf() ? '준비됨. "카메라 켜기"를 눌러 주세요.' : '준비됨. 먼저 REF 글자 읽기를 연결해 주세요(관리자에게 받은 설정 QR).', RO.getConf() ? '' : 'warn');
 
   function updateButtons() {
+    var on = RO.isOn();
     $('btn-start').hidden = running;
     $('btn-stop').disabled = !running;
-    $('btn-shot').hidden = !(running && mode === 'button');
-    $('btn-shot').disabled = !!shot;
-    $('btn-shot').textContent = shot ? (shot.waiting ? 'REF 글자 읽는 중…(회사 AI)' : '읽는 중…') : '📷 찍기';
-    if (!running || mode !== 'button') setSeen(false);
+    $('btn-shot').hidden = !running;
+    $('btn-shot').disabled = !!shot || !on;
+    $('btn-shot').textContent = shot ? 'REF 글자 읽는 중…(회사 AI)' : on ? '📷 찍기 (REF 글자 읽기)' : 'REF 글자 읽기 연결이 필요합니다';
+    $('aim-tip').textContent = running && on && !shot ? 'REF 글자를 이 칸에' : '';
   }
 
   /* ---------- 소리·진동·번쩍임 ----------
-   * 아이폰 주의 ① 소리는 버튼을 누른 "그 순간"(기다리는 코드보다 먼저) 한 번 틀어 둬야 이후에도 나온다.
-   *            ② 무음 모드(옆 스위치)면 '웹 오디오' 소리는 꺼진다 → 오디오 태그(동영상 소리처럼 취급)로 튼다.
-   * 그래서 짧은 삑 소리 파일(wav)을 폰 안에서 만들어 오디오 태그 하나로 튼다. 막히면 웹 오디오로 한 번 더 시도.
+   * 아이폰: 소리는 버튼을 누른 "그 순간"(기다리는 코드보다 먼저) 한 번 틀어 둬야 이후에도 나옴.
+   * 무음 모드에서도 들리게 오디오 태그(동영상 소리처럼 취급)로 짧은 삑 소리 파일을 틂. 막히면 웹 오디오로 한 번 더 시도.
    */
   var SOUNDS = { ok: [[1900, 0, 0.08]], shelf: [[1200, 0, 0.07], [1600, 0.09, 0.07]], warn: [[520, 0, 0.12], [520, 0.18, 0.12]] };
   var soundUrls = {}, player = null, actx = null;
   var soundStat = { ok: 0, fail: 0, err: '' };
-
   function wavUrl(tones) {
     var rate = 22050, end = 0;
     tones.forEach(function (t) { end = Math.max(end, t[1] + t[2]); });
@@ -175,7 +136,7 @@
     tones.forEach(function (t) {
       var s0 = Math.floor(t[1] * rate), len = Math.floor(t[2] * rate);
       for (var i = 0; i < len && s0 + i < n; i++) {
-        var env = Math.min(1, i / ramp, (len - i) / ramp);             // 시작·끝 딸깍 소리 방지
+        var env = Math.min(1, i / ramp, (len - i) / ramp);
         s[s0 + i] += (Math.sin(2 * Math.PI * t[0] * i / rate) >= 0 ? 1 : -1) * env;
       }
     });
@@ -193,11 +154,10 @@
     return p.then(function () { soundStat.ok++; return true; },
                   function (e) { soundStat.fail++; soundStat.err = (e && e.name) || '오류'; return false; });
   }
-  // 버튼을 누른 순간에만 부를 것(기다리는 코드보다 앞에서). 켤 때 '삑' 한 번 = 소리 확인.
-  function unlockSound() {
+  function unlockSound() {   // 버튼을 누른 순간에만 부를 것
     if (!player) { player = new Audio(); player.setAttribute('playsinline', ''); player.preload = 'auto'; }
     var p = countPlay(playKind('ok'));
-    try {   // 예비용 웹 오디오도 같은 순간에 준비
+    try {
       if (!actx) { var AC = window.AudioContext || window.webkitAudioContext; if (AC) actx = new AC(); }
       if (actx && actx.state !== 'running') actx.resume();
     } catch (e) { actx = null; }
@@ -229,7 +189,6 @@
     });
   });
   $('opt-sound').addEventListener('change', function () { if (this.checked) unlockSound(); });
-
   var flashTimer = null;
   function flash(kind) {
     var f = $('flash');
@@ -237,24 +196,15 @@
     clearTimeout(flashTimer);
     flashTimer = setTimeout(function () { f.className = 'flash'; }, 180);
   }
-  // 네모 칸 안 라벨이 읽히는 상태면 테두리를 초록으로(버튼 방식에서 '지금 누르면 됨' 표시)
-  function setSeen(on) {
-    var a = $('aim');
-    if (on) { a.classList.add('seen'); $('aim-tip').textContent = '✓ 읽을 수 있음 · 찍기'; }
-    else { a.classList.remove('seen'); $('aim-tip').textContent = ''; }
-  }
 
   /* ---------- 카메라 ---------- */
   async function start() {
     if (!window.isSecureContext) { status('보안 주소(https)로 열어야 카메라를 쓸 수 있습니다.', 'bad'); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { status('이 브라우저는 카메라를 지원하지 않습니다. 최신 크롬이나 사파리로 열어 주세요.', 'bad'); return; }
-    var ok = await C.initEngine(VENDOR);
-    if (!ok) { status('읽기 엔진을 쓸 수 없습니다.', 'bad'); return; }
     status('카메라 켜는 중…');
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
       });
     } catch (e) {
       var n = e && e.name;
@@ -265,9 +215,9 @@
       return;
     }
     vid.srcObject = stream;
-    try { await vid.play(); } catch (e) { /* 자동 재생 실패 시에도 아래에서 계속 */ }
+    try { await vid.play(); } catch (e) { /* 계속 */ }
     var track = stream.getVideoTracks()[0];
-    try {   // 지원하는 폰(주로 안드로이드)에서 연속 초점 요청
+    try {
       var caps = track.getCapabilities ? track.getCapabilities() : {};
       if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
       $('btn-torch').hidden = !caps.torch;
@@ -276,106 +226,34 @@
     running = true;
     var st = track.getSettings ? track.getSettings() : {};
     S.res = (st.width || vid.videoWidth) + '×' + (st.height || vid.videoHeight);
-    status(mode === 'button' ? '라벨을 네모 칸에 맞추고 "찍기"를 눌러 주세요.' : '읽는 중… 라벨을 네모 칸 안에 비춰 주세요.', 'ok');
+    status(RO.isOn() ? '라벨의 REF 글자를 네모 칸에 맞추고 "찍기"를 눌러 주세요.' : 'REF 글자 읽기가 연결되지 않았거나 꺼져 있습니다. 아래 설정을 확인해 주세요.', RO.isOn() ? 'ok' : 'bad');
     updateButtons();
-    loop();
   }
   function stop(msg) {
     running = false;
-    clearTimeout(timer);
-    cancelShot();
+    shot = null;
     if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
     vid.srcObject = null;
     torchOn = false;
     $('idle').hidden = false;
-    $('idle').textContent = msg || '멈췄습니다. "카메라 켜기"를 누르면 이어서 읽습니다.';
+    $('idle').textContent = msg || '멈췄습니다. "카메라 켜기"를 누르면 이어서 찍습니다.';
     $('btn-torch').hidden = true;
     updateButtons();
     status(msg || '멈춤');
   }
-  // 소리 준비는 반드시 start()의 기다림(await)보다 먼저, 누른 그 순간에
   $('btn-start').addEventListener('click', function () { if ($('opt-sound').checked) unlockSound(); start(); });
   $('btn-stop').addEventListener('click', function () { stop(); });
   $('btn-torch').addEventListener('click', function () {
     if (!stream) return;
-    var track = stream.getVideoTracks()[0];
     torchOn = !torchOn;
-    track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(function () { torchOn = false; });
+    stream.getVideoTracks()[0].applyConstraints({ advanced: [{ torch: torchOn }] }).catch(function () { torchOn = false; });
   });
   document.addEventListener('visibilitychange', function () {
-    if (document.hidden && running) stop('다른 화면으로 넘어가서 카메라를 껐습니다. "카메라 켜기"를 누르면 이어서 읽습니다.');
+    if (document.hidden && running) stop('다른 화면으로 넘어가서 카메라를 껐습니다. "카메라 켜기"를 누르면 이어서 찍습니다.');
   });
   $('btn-reset').addEventListener('click', function () { resetStats(); renderAll(); $('copy-status').textContent = ''; });
 
-  /* ---------- 찍기(버튼 방식) ---------- */
-  function capture() {
-    if (!running || mode !== 'button' || shot) return;
-    var now = Date.now();
-    shot = { start: now, until: now + SHOT_MAX_MS, got: [], firstAt: 0 };
-    shot.timer = setTimeout(function () { if (shot) finishShot(); }, SHOT_MAX_MS + 400);   // 화면이 멈춰도 끝나게
-    S.shots++;
-    // REF 글자 읽기(회사 AI): 누른 순간의 네모 칸 부분을 원래 화질로 잘라 보냄(바코드 읽기와 동시에)
-    if (RO.isOn() && vid.videoWidth) {
-      try {
-        var a = aimRect(vid.videoWidth, vid.videoHeight);
-        var jpg = RO.toJpeg(vid, a.x, a.y, a.w, a.h, 1600, 0.9);
-        var my = shot;
-        S.ocrCalls++;
-        my.ocrP = RO.recognize(jpg, OCR_WAIT_MS).then(function (lines) { my.refLines = lines; },
-                                                         function (e) { my.ocrErr = (e && e.message) || 'REF 글자 읽기 실패'; S.ocrFails++; });
-      } catch (e) { shot.ocrErr = '화면을 보낼 수 없음'; }
-    }
-    updateButtons();
-  }
-  function cancelShot() { if (shot) { clearTimeout(shot.timer); shot = null; updateButtons(); } }
-  function collectShot(res) {
-    if (shot.waiting) return;   // REF 글자를 기다리는 동안엔 바코드 모으기 끝
-    var now = Date.now();
-    res.forEach(function (r) { if (!shot.got.some(function (g) { return g.text === r.text; })) shot.got.push(r); });
-    if (res.length && !shot.firstAt) { shot.firstAt = now; shot.until = Math.min(shot.until, now + SHOT_COLLECT_MS); }
-    if (now >= shot.until) finishShot();
-  }
-  function finishShot() {
-    if (!shot) return;
-    var my = shot;
-    if (my.ocrP && !my.ocrDone) {               // REF 글자 결과가 올 때까지 기다렸다가 같이 처리
-      if (!my.waiting) {
-        my.waiting = true;
-        clearTimeout(my.timer);
-        updateButtons();
-        my.ocrP.then(function () { my.ocrDone = true; if (shot === my) finishShot(); });
-      }
-      return;
-    }
-    var got = my.got.slice();
-    clearTimeout(my.timer);
-    shot = null;
-    updateButtons();
-    var refs = (my.refLines && index) ? RO.findRefs(my.refLines, index) : [];
-    // 네모 칸 안 선반 라벨 글자(KTS-1-3)도 선반으로
-    (my.refLines || []).forEach(function (l) {
-      var m = /(?:^|[^A-Z0-9])((?:KTS|KN)-\d+(?:-[0-9A-Z]+)*)/i.exec(l.t);
-      if (m && !got.some(function (g) { return C.normLoc(g.text) === C.normLoc(m[1]); })) got.push({ text: C.normLoc(m[1]), format: '선반 글자' });
-    });
-    if (!got.length && !refs.length) {
-      S.misses++;
-      beep('warn'); flash('warn');
-      var last = $('last'); last.textContent = '';
-      last.appendChild(E('div', 't', '못 읽었습니다'));
-      last.appendChild(E('div', 'm', '라벨을 네모 칸 안에 크게, 흔들리지 않게 맞추고 다시 눌러 주세요.' +
-        (my.ocrErr ? ' (REF 글자 읽기: ' + my.ocrErr + ')' : (my.refLines ? ' (REF 글자도 못 찾음)' : ''))));
-      return;
-    }
-    handleBatch(got, got.map(function (g) { return g.text; }), Date.now(), true, refs);
-  }
-  $('btn-shot').addEventListener('click', capture);
-  $('video-box').addEventListener('click', function () {   // 화면 터치 = 찍기(카메라가 꺼져 있으면 켜기)
-    if (!running) { if (!$('btn-start').hidden) $('btn-start').click(); return; }
-    if (mode === 'button') capture();
-  });
-
-  /* ---------- 화면을 계속 읽기 ---------- */
-  // 네모 칸(+여유) 부분만 잘라서 읽는다 → 칸 밖의 라벨은 세지 않음. 화면은 object-fit: cover 로 잘려 보이므로 그만큼 맞춰 계산.
+  // 네모 칸(+여유) 부분 = 회사 AI로 보낼 부분. 화면은 object-fit: cover 로 잘려 보이므로 그만큼 맞춰 계산
   function aimRect(vw, vh) {
     var r = vid.getBoundingClientRect(), cw = r.width, ch = r.height;
     if (!cw || !ch) return { x: 0, y: 0, w: vw, h: vh };
@@ -383,239 +261,130 @@
     var offX = (vw * sc - cw) / 2, offY = (vh * sc - ch) / 2, m = AIM_MARGIN * cw;
     var bx = AIM.l * cw - m, by = AIM.t * ch - m, bw = cw * (1 - AIM.l - AIM.r) + 2 * m, bh = ch * (1 - AIM.t - AIM.b) + 2 * m;
     var x = Math.max(0, (bx + offX) / sc), y = Math.max(0, (by + offY) / sc);
-    var w = Math.min(vw - x, bw / sc), h = Math.min(vh - y, bh / sc);
-    return { x: x, y: y, w: Math.max(1, w), h: Math.max(1, h) };
-  }
-  async function loop() {
-    if (!running) return;
-    if (!busy && vid.readyState >= 2 && vid.videoWidth) {
-      busy = true;
-      try {
-        var a = aimRect(vid.videoWidth, vid.videoHeight);
-        var s = Math.min(1, MAX_SIDE / Math.max(a.w, a.h));
-        var w = Math.round(a.w * s), h = Math.round(a.h * s);
-        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-        ctx.drawImage(vid, a.x, a.y, a.w, a.h, 0, 0, w, h);
-        var id = ctx.getImageData(0, 0, w, h);
-        var t0 = performance.now();
-        var res = await C.decodeFrame(id);
-        S.frames++; S.decodeMs += performance.now() - t0;
-        if (mode === 'auto') handle(res);
-        else {
-          var now = Date.now();
-          if (res.length) seenUntil = now + 400;
-          setSeen(now < seenUntil);
-          if (shot) collectShot(res);
-        }
-      } catch (e) { /* 한 장 실패는 무시하고 계속 */ }
-      busy = false;
-    }
-    timer = setTimeout(loop, 40);
+    return { x: x, y: y, w: Math.max(1, Math.min(vw - x, bw / sc)), h: Math.max(1, Math.min(vh - y, bh / sc)) };
   }
 
-  // (자동 연속) 새로 나타난 바코드만 센다
-  function handle(res) {
-    var now = Date.now(), fresh = [];
-    res.forEach(function (r) {
-      var isNew = !(S.lastSeen[r.text] && now - S.lastSeen[r.text] < GAP_MS);
-      S.lastSeen[r.text] = now;
-      if (isNew && !fresh.some(function (f) { return f.text === r.text; })) fresh.push(r);
+  /* ---------- 찍기: 네모 칸을 회사 AI(텍스트 인식)로 → REF·선반 라벨 글자 ---------- */
+  function capture() {
+    if (!running || shot) return;
+    if (!RO.isOn()) { status('REF 글자 읽기가 연결되지 않았거나 꺼져 있습니다. 아래 설정을 확인해 주세요.', 'bad'); return; }
+    if (!vid.videoWidth) return;
+    var a = aimRect(vid.videoWidth, vid.videoHeight), jpg;
+    try { jpg = RO.toJpeg(vid, a.x, a.y, a.w, a.h, 1600, 0.9); } catch (e) { status('화면을 보낼 수 없습니다.', 'bad'); return; }
+    var my = shot = { at: Date.now() };
+    S.shots++; S.ocrCalls++;
+    updateButtons();
+    RO.recognize(jpg, OCR_WAIT_MS).then(function (lines) {
+      if (shot !== my) return;
+      shot = null; updateButtons(); handle(lines);
+    }, function (e) {
+      S.ocrFails++;
+      if (shot !== my) return;
+      shot = null; updateButtons(); miss('REF 글자 읽기 실패: ' + ((e && e.message) || e));
     });
-    res.forEach(function (r) { var i = C.interpret(r.text); if (i.serial) S.recentSerials[i.serial] = now; });
-    if (fresh.length) handleBatch(res, fresh.map(function (f) { return f.text; }), now, false);
+  }
+  $('btn-shot').addEventListener('click', capture);
+  $('video-box').addEventListener('click', function () {   // 화면 터치 = 찍기(카메라가 꺼져 있으면 켜기)
+    if (!running) { if (!$('btn-start').hidden) $('btn-start').click(); return; }
+    capture();
+  });
+
+  function miss(why) {
+    S.misses++;
+    beep('warn'); flash('warn');
+    var last = $('last'); last.textContent = '';
+    last.appendChild(E('div', 't', '못 읽었습니다'));
+    last.appendChild(E('div', 'm', why + ' 라벨의 REF 글자가 네모 칸 안에 크게, 흔들리지 않게 보이게 하고 다시 눌러 주세요.'));
   }
 
-  // 한 번에 읽힌 바코드 묶음 처리(REF 우선):
-  //  all = 화면(또는 한 번 찍기)에 함께 보인 바코드 전부, freshTexts = 그중 이번에 새로 셀 것
-  //  같은 시리얼의 바코드가 함께 보이면 REF로 찾아지는 것만 세고, 다른 번호는 그 REF로 자동 연결한다.
-  //  선반 라벨을 먼저 처리(같이 찍힌 물건이 그 선반으로 가도록)
-  function handleBatch(all, freshTexts, now, fromShot, refs) {
-    refs = refs || [];
-    all.forEach(function (r) { var i = C.interpret(r.text); if (i.serial) S.recentSerials[i.serial] = now; });
-    var texts = all.map(function (r) { return r.text; });
-    var batch = C.refBatch(texts, index, C.getAliases());
-    if (index && C.learnAliases(batch.learned)) { relinkEvents(); batch = C.refBatch(texts, index, C.getAliases()); }
-    var todo = [], done = {};
-    batch.entries.forEach(function (e, i) {
-      if (freshTexts.indexOf(e.text) < 0 || done[e.text] || e.skip) return;
-      done[e.text] = true;
-      todo.push({ e: e, r: all[i] });
-    });
-    // REF 글자(회사 AI)가 있으면 그것이 기준: 네모 칸 = 라벨 하나로 보고 바코드와 묶는다
-    //  - 바코드가 같은 REF → REF 글자 하나로 셈('바코드 일치')
-    //  - 바코드가 REF 아님(제조사 번호) → 안 세고 그 REF로 자동 연결(시리얼만 든 번호는 시리얼로만 씀)
-    //  - 바코드가 다른 REF → 글자를 확실히 읽었으면 글자 기준(경고), 추정이면 바코드도 셈
-    if (refs.length) {
-      var byCode = {}, strong = refs.some(function (r) { return r.how === 'exact' || r.how === 'fixed'; });
-      refs.forEach(function (r) { byCode[C.normCode(r.code)] = r; });
-      todo = todo.filter(function (x) {
-        var e = x.e, info = e.info, res = e.res;
-        if (info.type === 'location') return true;
-        if (res && byCode[C.normCode(res.item.code)]) {
-          var r = byCode[C.normCode(res.item.code)];
-          r.confirmed = true; if (info.serial && !r.serial) r.serial = info.serial;
-          return false;
-        }
-        if (!res) {
-          if (refs.length === 1) {
-            var r0 = refs[0];
-            if (!r0.serial) r0.serial = info.serial || (info.type === 'seven' ? e.text : '');
-            if (info.type === 'part') learnOne(C.lookupKey(e.text, info), r0.code);
-          }
-          return false;
-        }
-        if (strong) { refs[0].conflict = res.item.code; return false; }
-        return true;
-      });
+  function handle(lines) {
+    var now = Date.now();
+    if (!index) { miss('전산 목록이 없어 REF를 찾을 수 없습니다. 아래 "전산 목록"을 먼저 불러와 주세요.'); return; }
+    var shelves = RO.findShelves(lines), found = RO.findAll(lines, index);
+    if (!found.refs.length && !found.unknown.length && !shelves.length) { miss('REF 글자를 찾지 못했습니다.'); return; }
+    S.lastShotT = now;
+    if (shelves.length) {   // 선반 라벨 글자 → 지금 선반
+      S.shelf = shelves[0];
+      S.events.push({ t: now, kind: 'shelf', shelf: shelves[0], raw: shelves[0] });
     }
-    var locsFirst = todo.filter(function (x) { return x.e.info.type === 'location'; });
-    var bars = todo.filter(function (x) { return x.e.info.type !== 'location'; });
-    var results = locsFirst.map(function (x) { return onNew(x.r.text, x.r.format, now); });
-    refs.forEach(function (r) {
+    var issues = [], mismatch = false;
+    found.refs.forEach(function (r) {
       var it = index[C.normCode(r.code)];
-      results.push(onNew('REF ' + r.code, 'REF 글자', now, {
-        info: { type: 'part', part: r.code, kind: 'REF 글자' + (r.how === 'fuzzy' ? '(추정)' : ''), serial: r.serial || '' },
-        res: { item: it, via: 'ref' }, refHow: r.how, confirmed: !!r.confirmed, conflict: r.conflict || '' }));
+      var ev = { t: now, kind: 'item', raw: 'REF ' + it.code, item: it, refHow: r.how, shelf: S.shelf };
+      if (S.shelf && it.loc) { ev.mismatch = !C.locMatches(it.loc, S.shelf); mismatch = mismatch || ev.mismatch; }
+      if (!S.firstScan) S.firstScan = now;
+      S.lastScan = now;
+      S.events.push(ev);
+      if (!it.loc) issues.push({ kind: 'noLoc', item: it, suggest: C.suggestShelf(list, it) });
     });
-    bars.forEach(function (x) { results.push(onNew(x.r.text, x.r.format, now)); });
-    if (fromShot && results.indexOf('ok') < 0) {   // 찍었는데 새로 센 것이 없으면 이유를 알려 줌
-      S.misses++;
-      beep('warn'); flash('warn');
-      var last = $('last'); last.textContent = '';
-      if (results.indexOf('dupSerial') >= 0) {
-        last.appendChild(E('div', 't', '이미 센 물건입니다'));
-        last.appendChild(E('div', 'm', '같은 시리얼(같은 물건)은 한 번만 셉니다.'));
-      } else {
-        last.appendChild(E('div', 't', 'REF 바코드가 안 보입니다'));
-        last.appendChild(E('div', 'm', '시리얼 바코드만 읽혔습니다. 품목(REF) 바코드가 네모 칸에 보이게 다시 찍어 주세요.'));
-      }
-    }
+    found.unknown.forEach(function (u) {
+      S.events.push({ t: now, kind: 'unknown', raw: 'REF ' + u.raw });
+      issues.push({ kind: 'notInList', raw: u.raw });
+    });
+    S.issues += issues.length;
+    if (issues.length || mismatch) { beep('warn'); flash('warn'); }
+    else if (found.refs.length) { beep('ok'); flash('ok'); }
+    else { beep('shelf'); flash('shelf'); }
+    renderAll();
+    if (issues.length) LOG.alertIssues(issues, C.locOptions(list), function () { renderAll(); });
   }
 
-  function itemKey(ev) { return ev.item ? 'I:' + C.normCode(ev.item.code) : 'U:' + ev.lk; }
-  // 선반별·REF별 개수(취소된 기록 제외, 언제든 기록에서 다시 계산)
+  /* ---------- 그리기 ---------- */
+  function whereText(ev) {   // 이 물건을 둘 곳
+    var it = ev.item;
+    if (it.loc) return { t: '📍 선반 ' + it.loc + (ev.mismatch ? '  (지금 선반 ' + ev.shelf + ' 아님!)' : ''), none: !!ev.mismatch };
+    var req = LOG.getShelfReq(it.code);
+    if (req) return { t: '📍 등록 요청한 선반 ' + req.shelf + ' (전산 반영 전)', none: true };
+    return { t: '⚠ 등록된 선반 없음 — 선반 등록 요청 또는 확인 필요', none: true };
+  }
+  function items() { return S.events.filter(function (e) { return e.kind === 'item'; }); }
   function buildCounts() {
     var counts = {};
-    liveEvents().forEach(function (ev) {
-      var sk = ev.shelf || '(선반 없음)', k = itemKey(ev);
+    items().forEach(function (ev) {
+      var sk = ev.shelf || '(선반 없음)', k = C.normCode(ev.item.code);
       var g = counts[sk] || (counts[sk] = {});
       (g[k] || (g[k] = { n: 0, ev: ev })).n++;
     });
     return counts;
   }
-  // REF 연결(직접·자동)이 새로 생기면, 이미 센 'REF 미확인' 기록을 REF로 다시 찾는다
-  function relinkEvents() {
-    if (!index) return;
-    var aliases = C.getAliases();
-    S.events.forEach(function (ev) {
-      if (ev.kind !== 'item' || ev.item) return;
-      var res = C.resolve(ev.raw, ev.info, index, aliases);
-      if (!res) return;
-      ev.item = res.item; ev.via = res.via;
-      if (ev.shelf && ev.item.loc) ev.mismatch = !C.locMatches(ev.item.loc, ev.shelf);
-    });
-  }
-  function learnOne(from, to) { if (index && C.learnAliases([{ from: from, to: to }])) relinkEvents(); }
-
-  // 새로 읽힌 바코드 하나 처리. 돌려주는 값: 'ok'(셈·선반 바뀜) / 'serialOnly'(시리얼 바코드라 안 셈) / 'dupSerial'(이미 센 물건)
-  function onNew(text, format, now, pre) {   // pre: REF 글자처럼 이미 해석·찾기를 마친 것
-    var info = pre ? pre.info : C.interpret(text);
-    if (!pre && info.type === 'location') {
-      S.shelf = info.loc;
-      S.events.push({ t: now, raw: text, format: format, kind: 'shelf', shelf: info.loc });
-      beep('shelf'); flash('shelf');
-      renderAll();
-      return 'ok';
-    }
-    var res = pre ? (pre.res && pre.res.item ? pre.res : null) : (index ? C.resolve(text, info, index, C.getAliases()) : null);
-    // 시리얼만 든 바코드(네모)는 따로 세지 않는다: 방금 함께 보였거나, 이미 센 물건의 시리얼이면
-    if (!pre && !res && (S.serialEv[text] || (S.recentSerials[text] && now - S.recentSerials[text] < SERIAL_WINDOW_MS))) return 'serialOnly';
-    if (info.serial) {
-      // 시리얼 바코드만 먼저 세어 둔 것은 취소
-      S.events.forEach(function (pe) { if (pe.kind === 'item' && !pe.removed && !pe.item && pe.raw === info.serial) pe.removed = true; });
-      var prev = S.serialEv[info.serial];
-      if (prev && !prev.removed) {
-        if (!prev.item && res) { prev.removed = true; learnOne(prev.lk, res.item.code); }   // 앞서 센 'REF 미확인'을 이번 REF로 바꿈
-        else { if (prev.item && !res) learnOne(C.lookupKey(text, info), prev.item.code); renderAll(); return 'dupSerial'; }
-      }
-    }
-    var ev = { t: now, raw: text, format: format, kind: 'item', info: info, item: res ? res.item : null, via: res ? res.via : '',
-               lk: C.lookupKey(text, info), shelf: S.shelf, serial: info.serial || '',
-               refHow: pre ? pre.refHow : '', refConfirmed: !!(pre && pre.confirmed), conflict: pre ? pre.conflict : '' };
-    if (ev.item && S.shelf && ev.item.loc) ev.mismatch = !C.locMatches(ev.item.loc, S.shelf);
-    if (info.serial) S.serialEv[info.serial] = ev;
-    if (!S.firstScan) S.firstScan = now;
-    S.lastScan = now;
-    S.events.push(ev);
-    var warn = ev.mismatch || (index && !ev.item);
-    beep(warn ? 'warn' : 'ok'); flash(warn ? 'warn' : 'ok');
-    renderAll();
-    return 'ok';
-  }
-
-  /* ---------- 그리기 ---------- */
-  // REF(제품 코드)를 맨 앞에: "REF 6528173" / 못 찾으면 "REF 미확인"
-  function evTitle(ev) { return ev.item ? 'REF ' + ev.item.code : 'REF 미확인'; }
-  function evName(ev) { return ev.item ? (ev.item.name || '') : '바코드 ' + ev.raw; }
-  function evMeta(ev) {
-    var m = [];
-    if (ev.item) m.push(ev.item.loc ? '전산 위치 ' + ev.item.loc : '전산 위치 없음');
-    else m.push(ev.info.kind + (index ? ' · 전산 REF가 아님' : ''));
-    if (ev.info && ev.info.serial) m.push('시리얼 ' + ev.info.serial);
-    if (ev.refHow) m.push(ev.refHow === 'fuzzy' ? 'REF 글자(1글자 차이 추정)' : ev.refHow === 'noKeyword' ? "REF 글자('REF' 표시 못 읽음)"
-                         : 'REF 글자 ✓' + (ev.refConfirmed ? '·바코드 일치' : ''));
-    if (ev.conflict) m.push('⚠️ 바코드는 REF ' + ev.conflict + ' — 라벨 확인');
-    if (ev.mismatch) m.push('⚠️ 지금 선반(' + ev.shelf + ')과 전산 위치가 다릅니다');
-    return m.join(' · ');
-  }
-  function linkButton(ev) {   // 'REF 미확인' 번호를 REF로 잇는 버튼
-    var b = E('button', 'small-btn', 'REF 연결'); b.type = 'button';
-    b.addEventListener('click', function () {
-      C.openLinkDialog(list, ev.lk, ev.info.kind, function () { relinkEvents(); renderAll(); });
-    });
-    return b;
-  }
-  function liveEvents() { return S.events.filter(function (e) { return e.kind === 'item' && !e.removed; }); }
-
   function renderAll() {
     $('shelf').textContent = S.shelf || '없음';
-    var items = liveEvents();
-    $('n-scan').textContent = items.length;
-    var kinds = {};
-    items.forEach(function (e) { kinds[itemKey(e)] = 1; });
+    var its = items(), kinds = {};
+    its.forEach(function (e) { kinds[C.normCode(e.item.code)] = 1; });
+    $('n-scan').textContent = its.length;
     $('n-kind').textContent = Object.keys(kinds).length;
-    var mins = (S.lastScan - S.firstScan) / 60000;
-    $('n-rate').textContent = items.length >= 3 && mins > 0 ? Math.round((items.length - 1) / mins) : '–';
+    $('n-issue').textContent = S.issues;
 
-    var last = $('last'); last.textContent = '';
-    var le = S.events[S.events.length - 1];
-    if (le) {
-      if (le.kind === 'shelf') { last.appendChild(E('div', 't', '선반 ' + le.shelf)); last.appendChild(E('div', 'm', '이제부터 읽는 물건은 이 선반으로 셉니다.')); }
-      else {
-        last.appendChild(E('div', 't iref' + (le.item ? '' : ' unk'), (le.removed ? '(취소됨) ' : '') + evTitle(le)));
-        if (evName(le)) last.appendChild(E('div', 'm', evName(le)));
-        last.appendChild(E('div', 'm', evMeta(le)));
-        if (!le.item && list && !le.removed) { var lr = E('div', 'row'); lr.appendChild(linkButton(le)); last.appendChild(lr); }
-      }
-    } else last.appendChild(E('div', 'm', '아직 읽은 것이 없습니다.'));
+    // 마지막 찍기 결과: REF → 놓을 선반을 크게
+    var last = $('last');
+    var shotEvs = S.events.filter(function (e) { return e.t === S.lastShotT; });
+    if (shotEvs.length) {
+      last.textContent = '';
+      shotEvs.forEach(function (ev) {
+        if (ev.kind === 'shelf') { last.appendChild(E('div', 't', '📍 선반 라벨 ' + ev.shelf)); last.appendChild(E('div', 'm', '이제부터 찍는 물건은 이 선반으로 셉니다.')); return; }
+        if (ev.kind === 'unknown') { last.appendChild(E('div', 't iref unk', ev.raw)); last.appendChild(E('div', 'where none', '⚠ 전산 목록에 없는 번호 — 번호·전산 목록 확인 필요')); return; }
+        last.appendChild(E('div', 't iref', 'REF ' + ev.item.code + (ev.refHow === 'fuzzy' ? ' (1글자 차이 추정)' : '')));
+        if (ev.item.name) last.appendChild(E('div', 'm', ev.item.name));
+        var w = whereText(ev);
+        last.appendChild(E('div', 'where' + (w.none ? ' none' : ''), w.t));
+      });
+    } else if (!S.events.length) { last.textContent = ''; last.appendChild(E('div', 'm', '아직 읽은 것이 없습니다.')); }
 
+    // 선반별 집계 + 선반 대조(전산상 이 선반 장비 중 몇 개 확인)
     var bs = $('by-shelf'); bs.textContent = '';
-    var counts = buildCounts();
-    var shelves = Object.keys(counts);
+    var counts = buildCounts(), shelves = Object.keys(counts);
     shelves.sort(function (a, b) { return C.compareLoc(a === '(선반 없음)' ? '' : a, b === '(선반 없음)' ? '' : b); });
     if (!shelves.length) bs.appendChild(E('p', 'note', '아직 없습니다.'));
     shelves.forEach(function (sk) {
       bs.appendChild(E('h3', 'sub-h', sk));
-      if (list && sk !== '(선반 없음)') {   // 선반 대조: 전산상 이 선반 장비(REF) 중 몇 개를 확인했는지 + 아직 못 찾은 것
+      if (list && sk !== '(선반 없음)') {
         var expected = list.items.filter(function (it) { return it.loc && C.locMatches(it.loc, sk); });
         var foundSet = {}, otherSet = {};
         Object.keys(counts[sk]).forEach(function (k) {
           var it = counts[sk][k].ev.item;
-          if (!it) return;
-          if (it.loc && C.locMatches(it.loc, sk)) foundSet[C.normCode(it.code)] = true; else otherSet[C.normCode(it.code)] = true;
+          if (it.loc && C.locMatches(it.loc, sk)) foundSet[k] = true; else otherSet[k] = true;
         });
-        var missing = expected.filter(function (it) { return !foundSet[C.normCode(it.code)]; })
-          .sort(function (a, b) { return C.compareCode(a.code, b.code); });
+        var missing = expected.filter(function (it) { return !foundSet[C.normCode(it.code)]; }).sort(function (a, b) { return C.compareCode(a.code, b.code); });
         bs.appendChild(E('p', 'shelf-sum', '선반 대조: 전산상 이 선반 장비 ' + expected.length + '종 중 ' + Object.keys(foundSet).length + '종 확인 · 다른 선반 장비 ' + Object.keys(otherSet).length + '종'));
         if (missing.length) {
           var det = E('details', 'missing');
@@ -628,93 +397,67 @@
             d.appendChild(E('span', 'meta', '전산 위치 ' + it.loc));
             li.appendChild(d); mul.appendChild(li);
           });
-          det.appendChild(mul);
-          bs.appendChild(det);
+          det.appendChild(mul); bs.appendChild(det);
         }
       }
       var ul = E('ul', 'att-list');
-      var keys = Object.keys(counts[sk]).sort(function (a, b) {   // REF 번호 순, 'REF 미확인'은 맨 아래
-        var ea = counts[sk][a].ev, eb = counts[sk][b].ev;
-        if (!!ea.item !== !!eb.item) return ea.item ? -1 : 1;
-        return C.compareCode(ea.item ? ea.item.code : ea.raw, eb.item ? eb.item.code : eb.raw);
-      });
-      keys.forEach(function (k) {
+      Object.keys(counts[sk]).sort(function (a, b) { return C.compareCode(a, b); }).forEach(function (k) {
         var c = counts[sk][k], li = E('li'), d = E('div', 'grow');
-        d.appendChild(E('b', 'iref' + (c.ev.item ? '' : ' unk'), evTitle(c.ev) + '  ×' + c.n));
-        if (evName(c.ev)) d.appendChild(E('span', 'meta', evName(c.ev)));
-        d.appendChild(E('span', 'meta', evMeta(c.ev)));
-        li.appendChild(d);
-        if (!c.ev.item && list) li.appendChild(linkButton(c.ev));
-        ul.appendChild(li);
+        d.appendChild(E('b', 'iref', 'REF ' + c.ev.item.code + '  ×' + c.n));
+        if (c.ev.item.name) d.appendChild(E('span', 'meta', c.ev.item.name));
+        d.appendChild(E('span', 'meta', whereText(c.ev).t));
+        li.appendChild(d); ul.appendChild(li);
       });
       bs.appendChild(ul);
     });
 
     var log = $('log'); log.textContent = '';
     S.events.slice().reverse().slice(0, 100).forEach(function (ev) {
-      var li = E('li', ev.removed ? 'removed' : '');
-      var when = C.fmtClock(new Date(ev.t));
-      if (ev.kind === 'shelf') li.appendChild(E('b', '', '📍 선반 ' + ev.shelf));
-      else li.appendChild(E('b', '', evTitle(ev) + (evName(ev) ? ' · ' + evName(ev) : '')));
-      li.appendChild(E('span', 'meta', when + ' · ' + C.formatLabel(ev.format) + (ev.kind === 'item' ? ' · ' + evMeta(ev) : '') + (ev.removed ? ' · 같은 라벨의 시리얼이라 취소' : '') + (ev.sent ? ' · ✅ 기록함' : '')));
+      var li = E('li'), when = C.fmtClock(new Date(ev.t));
+      if (ev.kind === 'shelf') li.appendChild(E('b', '', '📍 선반 라벨 ' + ev.shelf));
+      else if (ev.kind === 'unknown') li.appendChild(E('b', '', ev.raw + ' · 전산 목록에 없음'));
+      else li.appendChild(E('b', '', 'REF ' + ev.item.code + (ev.item.name ? ' · ' + ev.item.name : '')));
+      li.appendChild(E('span', 'meta', when + (ev.kind === 'item' ? ' · ' + whereText(ev).t : '') + (ev.sent ? ' · ✅ 기록함' : '')));
       log.appendChild(li);
     });
-    if (logBox) logBox.refresh();   // 입출고 기록 칸의 보낼 목록도 새로
+    if (logBox) logBox.refresh();
   }
 
-  /* ---------- 입출고 기록(회사 엑셀): 아직 안 보낸 기록을 선반·REF별로 묶어서 ---------- */
+  /* ---------- 입출고 기록(회사 엑셀): 아직 안 보낸 것을 선반·REF별로 묶어서 ---------- */
   function getLogItems() {
-    var groups = {}, order = [], skipped = 0;
-    liveEvents().forEach(function (e) {
+    var groups = {}, order = [];
+    items().forEach(function (e) {
       if (e.sent) return;
-      if (!e.item) { skipped++; return; }
       var k = (e.shelf || '') + '|' + C.normCode(e.item.code);
       if (!groups[k]) {
         groups[k] = { key: k, ref: e.item.code, name: e.item.name || '', qty: 0, shelf: e.shelf || '', loc: e.item.loc || '',
-                      serials: [], how: '바코드', evs: [] };
+                      serial: '', how: 'REF 글자', evs: [] };
         order.push(k);
       }
-      var g = groups[k];
-      g.qty++; g.evs.push(e);
-      if (e.serial && g.serials.indexOf(e.serial) < 0) g.serials.push(e.serial);
-      if (e.refHow) g.how = 'REF 글자';
+      groups[k].qty++; groups[k].evs.push(e);
     });
-    return { items: order.map(function (k) { var g = groups[k]; g.serial = g.serials.join(','); return g; }), skipped: skipped };
+    return { items: order.map(function (k) { return groups[k]; }), skipped: S.events.filter(function (e) { return e.kind === 'unknown'; }).length };
   }
-  logBox = LOG.mountBox($('log-box'), getLogItems, function (items) {
-    items.forEach(function (it) { it.evs.forEach(function (e) { e.sent = true; }); });
+  logBox = LOG.mountBox($('log-box'), getLogItems, function (sentItems) {
+    sentItems.forEach(function (it) { it.evs.forEach(function (e) { e.sent = true; }); });
     renderAll();
   });
 
   /* ---------- 결과 복사 ---------- */
   $('btn-copy').addEventListener('click', function () {
-    var items = liveEvents();
     var L = [];
-    L.push('[카메라 스캔 시험 결과]');
-    L.push('기기: ' + C.deviceText());
-    L.push(C.engineText() + ' · 카메라 ' + (S.res || '?') + ' · 네모 칸만 읽음');
-    L.push('찍는 방식: ' + (mode === 'button' ? '버튼 눌러 찍기' : '자동 연속') + (S.shots ? ' · 찍기 ' + S.shots + '번 중 못 읽음 ' + S.misses + '번' : ''));
+    L.push('[카메라 스캔 시험 결과 - REF 글자]');
+    L.push('기기: ' + C.deviceText() + ' · 카메라 ' + (S.res || '?'));
     L.push('전산 목록: ' + (list ? list.items.length + '개 품목' : '없음'));
-    var secs = S.firstScan ? (S.lastScan - S.firstScan) / 1000 : 0;
-    L.push('읽은 횟수 ' + items.length + ' · 첫 번째~마지막 ' + secs.toFixed(1) + '초' + (items.length > 1 ? ' · 1개당 평균 ' + (secs / (items.length - 1)).toFixed(1) + '초' : ''));
-    L.push('화면 읽기 ' + S.frames + '번 · 1번에 평균 ' + (S.frames ? Math.round(S.decodeMs / S.frames) : 0) + 'ms');
-    L.push('REF 글자 읽기(회사 AI): ' + (RO.isOn() ? '켜짐' : (RO.getConf() ? '꺼짐' : '연결 안 됨')) + ' · 보냄 ' + S.ocrCalls + ' · 실패 ' + S.ocrFails +
+    L.push('REF 글자 읽기(회사 AI): ' + (RO.isOn() ? '켜짐' : (RO.getConf() ? '꺼짐' : '연결 안 됨')) + ' · 찍기 ' + S.shots + ' · 실패 ' + S.ocrFails + ' · 못 읽음 ' + S.misses +
            (RO.stats.lastMs ? ' · 마지막 ' + (RO.stats.lastMs / 1000).toFixed(1) + '초' : '') + (RO.stats.lastErr ? ' (마지막 오류: ' + RO.stats.lastErr + ')' : ''));
-    L.push('소리: ' + ($('opt-sound').checked ? '켜짐' : '꺼짐') + ' · 재생 성공 ' + soundStat.ok + '번 / 실패 ' + soundStat.fail + '번' + (soundStat.err ? ' (마지막 오류 ' + soundStat.err + ')' : ''));
+    L.push('소리: ' + ($('opt-sound').checked ? '켜짐' : '꺼짐') + ' · 재생 성공 ' + soundStat.ok + ' / 실패 ' + soundStat.fail);
     L.push('');
-    L.push('■ 선반별 (REF 기준)');
-    var counts = buildCounts();
-    Object.keys(counts).forEach(function (sk) {
-      var g = counts[sk], ks = Object.keys(g);
-      var exp = (list && sk !== '(선반 없음)') ? list.items.filter(function (it) { return it.loc && C.locMatches(it.loc, sk); }).length : 0;
-      L.push(sk + (exp ? ' (전산상 이 선반 장비 ' + exp + '종)' : ''));
-      ks.forEach(function (k) { var c = g[k]; L.push('   - ' + evTitle(c.ev) + ' ×' + c.n + ' | ' + evName(c.ev) + (c.ev.mismatch ? ' ※전산 위치 다름' : '')); });
-    });
-    L.push('');
-    L.push('■ 읽은 순서 (시작부터 초)');
     var base = S.events.length ? S.events[0].t : 0;
     S.events.forEach(function (ev) {
-      L.push(((ev.t - base) / 1000).toFixed(1) + 's ' + (ev.kind === 'shelf' ? '선반 ' + ev.shelf : evTitle(ev) + ' | 바코드 ' + ev.raw + ' | ' + ev.format) + (ev.removed ? ' (취소)' : '') + (ev.mismatch ? ' (위치 다름)' : ''));
+      L.push(((ev.t - base) / 1000).toFixed(1) + 's ' + (ev.kind === 'shelf' ? '선반 라벨 ' + ev.shelf
+        : ev.kind === 'unknown' ? ev.raw + ' (전산 목록에 없음)'
+        : 'REF ' + ev.item.code + ' | ' + (ev.item.name || '') + ' | ' + whereText(ev).t + ' | ' + ev.refHow) + (ev.sent ? ' (기록함)' : ''));
     });
     C.copyText(L.join('\n')).then(function (ok) {
       var st = $('copy-status');
@@ -726,21 +469,16 @@
   // 시험 자동화용(화면에는 영향 없음)
   window.__liveTest = {
     snapshot: function () {
-      return { shelf: S.shelf, frames: S.frames, avgMs: S.frames ? S.decodeMs / S.frames : 0, shots: S.shots, misses: S.misses, mode: mode,
-               seen: $('aim').classList.contains('seen'), shooting: !!shot,
-               events: S.events.map(function (e) { return { raw: e.raw, kind: e.kind, shelf: e.shelf, code: e.item ? e.item.code : null, removed: !!e.removed, mismatch: !!e.mismatch,
-                                                             refHow: e.refHow || '', refConfirmed: !!e.refConfirmed, conflict: e.conflict || '' }; }),
-               ocrCalls: S.ocrCalls, ocrFails: S.ocrFails,
-               counts: (function () { var c = buildCounts(), o = {}; Object.keys(c).forEach(function (sk) { o[sk] = {}; Object.keys(c[sk]).forEach(function (k) { o[sk][k] = c[sk][k].n; }); }); return o; })() };
+      return { shelf: S.shelf, shots: S.shots, misses: S.misses, ocrCalls: S.ocrCalls, ocrFails: S.ocrFails, issues: S.issues,
+               shooting: !!shot, alert: !!document.getElementById('issue-alert'),
+               events: S.events.map(function (e) { return { kind: e.kind, raw: e.raw, code: e.item ? e.item.code : null, shelf: e.shelf || '',
+                                                            mismatch: !!e.mismatch, refHow: e.refHow || '', sent: !!e.sent }; }) };
     },
     stop: function () { stop(); },
-    sound: function () { return { ok: soundStat.ok, fail: soundStat.fail, err: soundStat.err, src: player ? player.src.slice(0, 5) : '' }; },
+    sound: function () { return { ok: soundStat.ok, fail: soundStat.fail, err: soundStat.err }; },
     beep: function (k) { beep(k); }
   };
-
-  var saved = 'button';
-  try { saved = localStorage.getItem(MODE_KEY) || 'button'; } catch (e) { /* 기본값 */ }
-  setMode(saved);
+  updateButtons();
   renderAll();
 })();
 </script>
