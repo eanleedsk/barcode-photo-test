@@ -33,7 +33,7 @@
         var j = null;
         try { j = JSON.parse(txt); } catch (e) { /* 아래 */ }
         if (!res.ok || !j || !j.ok) {
-          throw new Error(res.status === 403 ? '접속 키·이름·내용을 확인해 주세요(설정 링크를 다시 열어 보세요)'
+          throw new Error(res.status === 403 ? '접속 키·이름·내용을 확인해 주세요(키가 바뀌었으면 연결 해제 후 새 팀 비밀번호 입력)'
             : res.status === 404 ? '기록 흐름이 꺼져 있거나 주소가 바뀌었습니다'
             : (j && j.error) ? String(j.error).slice(0, 200) : ('응답 ' + res.status));
         }
