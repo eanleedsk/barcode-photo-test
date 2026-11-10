@@ -52,6 +52,34 @@
     return c ? 'ok' : 'bad';
   };
 
+  /* ---------------- 팀 비밀번호로 연결(사장님 결정 2026-11-10) ----------------
+   * shared/team_lock.js 의 window.KTS_TEAM_LOCK = 팀 비밀번호로 잠근 연결 정보(make_team_lock.py 가 만듦).
+   * 비밀번호 → PBKDF2-SHA256 → AES-256-GCM 풀기 → 맞으면 설정 링크와 똑같이 이 폰에만 저장. 비밀번호 자체는 저장 안 함. */
+  function normPass(p) { return String(p || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }   // make_team_lock.py norm() 과 같아야 함
+  function b64Bytes(s) {
+    var bin = atob(String(s || '')), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  R.hasTeamLock = function () {
+    var t = global.KTS_TEAM_LOCK;
+    return !!(t && t.v === 1 && t.it >= 100000 && t.salt && t.iv && t.ct && global.crypto && global.crypto.subtle && global.TextEncoder);
+  };
+  R.unlockTeam = function (pass) {   // → Promise(설정 또는 null)
+    if (!R.hasTeamLock() || normPass(pass).length < 10) return Promise.resolve(null);
+    var t = global.KTS_TEAM_LOCK, subtle = global.crypto.subtle;
+    return subtle.importKey('raw', new TextEncoder().encode(normPass(pass)), 'PBKDF2', false, ['deriveKey'])
+      .then(function (base) {
+        return subtle.deriveKey({ name: 'PBKDF2', salt: b64Bytes(t.salt), iterations: t.it, hash: 'SHA-256' },
+                                base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+      })
+      .then(function (key) { return subtle.decrypt({ name: 'AES-GCM', iv: b64Bytes(t.iv) }, key, b64Bytes(t.ct)); })
+      .then(function (buf) {
+        var c = JSON.parse(new TextDecoder('utf-8').decode(buf));
+        return validConf(c) ? c : null;
+      }, function () { return null; });   // 비밀번호가 틀리면 풀기 자체가 실패함
+  };
+
   /* ---------------- 사진 보내기 ---------------- */
   // 그림(img/video/canvas)의 한 부분을 긴 변 maxSide 이하 JPEG(base64)로
   R.toJpeg = function (src, sx, sy, sw, sh, maxSide, quality) {
@@ -86,7 +114,7 @@
         var j = null;
         try { j = JSON.parse(txt); } catch (e) { /* 아래에서 처리 */ }
         if (!res.ok || !j || !j.ok) {
-          var why = res.status === 403 ? '접속 키가 맞지 않습니다(설정 링크를 다시 열어 주세요)'
+          var why = res.status === 403 ? '접속 키가 맞지 않습니다(연결 설정에서 "연결 해제" 후 새 팀 비밀번호를 입력해 주세요)'
             : res.status === 404 ? '흐름이 꺼져 있거나 주소가 바뀌었습니다'
             : (j && j.error) ? String(j.error).slice(0, 200) : ('응답 ' + res.status);
           throw new Error(why);
@@ -311,9 +339,18 @@
     box.appendChild(chkWrap);
     var st = E('p', 'status'); st.id = 'ref-status'; st.style.marginTop = '0';
     box.appendChild(st);
+    // 팀 비밀번호 칸(연결 안 됐을 때만 보임)
+    var team = E('div', 'team-pass'); team.id = 'ref-team'; team.hidden = true;
+    var tp = E('input'); tp.type = 'password'; tp.id = 'ref-pass'; tp.placeholder = '팀 비밀번호 (예: abcd-efgh-jkmn)';
+    tp.setAttribute('aria-label', '팀 비밀번호'); tp.setAttribute('autocomplete', 'off'); tp.setAttribute('autocapitalize', 'none');
+    tp.setAttribute('autocorrect', 'off'); tp.spellcheck = false;
+    var tb = E('button', 'btn primary', '🔓 연결'); tb.type = 'button'; tb.id = 'ref-pass-go';
+    team.appendChild(tp); team.appendChild(tb);
+    team.appendChild(E('p', 'note', '관리자에게 받은 팀 비밀번호를 이 폰에서 한 번만 입력하면, 다음부터는 열기만 해도 연결돼 있습니다.'));
+    box.appendChild(team);
     var det = E('details'); det.id = 'ref-setup';
     det.appendChild(E('summary', '', 'REF 글자 읽기 연결 설정'));
-    det.appendChild(E('p', 'note', '관리자에게 받은 설정 링크를 이 폰에서 한 번 열면 자동으로 연결됩니다. 안 되면 링크 전체를 아래에 붙여넣어 주세요.'));
+    det.appendChild(E('p', 'note', '팀 비밀번호 대신 관리자에게 받은 설정 링크(QR)로도 연결할 수 있습니다. 링크를 이 폰에서 한 번 열거나, 링크 전체를 아래에 붙여넣어 주세요.'));
     var ta = E('textarea'); ta.id = 'ref-code'; ta.setAttribute('aria-label', '설정 링크 붙여넣기'); ta.style.minHeight = '70px';
     det.appendChild(ta);
     var row = E('div', 'row');
@@ -329,13 +366,32 @@
       chk.disabled = !conf;
       chk.checked = R.isOn();
       clr.disabled = !conf;
+      team.hidden = !!conf || !R.hasTeamLock();
       if (msg) { st.textContent = msg; st.className = 'status ' + (cls || ''); }
-      else if (!conf) { st.textContent = '연결 안 됨 — 관리자에게 받은 설정 링크를 이 폰에서 한 번 열어 주세요.'; st.className = 'status warn'; }
+      else if (!conf) {
+        st.textContent = R.hasTeamLock() ? '연결 안 됨 — 아래에 팀 비밀번호를 입력해 주세요(이 폰에서 한 번만).'
+                                         : '연결 안 됨 — 관리자에게 받은 설정 링크를 이 폰에서 한 번 열어 주세요.';
+        st.className = 'status warn';
+      }
       else if (chk.checked) { st.textContent = '연결됨 · 켜짐: 사진이 회사 마이크로소프트 클라우드(AI Builder)로 가서 글자만 읽고, 저장하지 않습니다.'; st.className = 'status ok'; }
-      else { st.textContent = '연결됨 · 꺼짐: 바코드만 읽습니다(사진은 폰 밖으로 안 나감).'; st.className = 'status'; }
+      else { st.textContent = '연결됨 · 꺼짐: REF 글자를 읽지 않습니다(사진은 폰 밖으로 안 나감).'; st.className = 'status'; }
       if (onChange) onChange(R.isOn());
     }
     chk.addEventListener('change', function () { R.setOn(chk.checked); refresh(); });
+    var trying = false;
+    function tryTeam() {
+      if (trying) return;
+      if (normPass(tp.value).length < 10) { refresh('❌ 팀 비밀번호를 끝까지 입력해 주세요(글자·숫자 12자리).', 'bad'); return; }
+      trying = true; tb.disabled = true; tb.textContent = '확인 중…';
+      R.unlockTeam(tp.value).then(function (c) {
+        trying = false; tb.disabled = false; tb.textContent = '🔓 연결';
+        if (!c) { refresh('❌ 비밀번호가 맞지 않습니다. 관리자에게 받은 비밀번호를 다시 확인해 주세요.', 'bad'); tp.select(); return; }
+        R.setConf(c); R.setOn(true); tp.value = '';
+        refresh('✅ REF 글자 읽기가 이 폰에 연결됐습니다.', 'ok');
+      });
+    }
+    tb.addEventListener('click', tryTeam);
+    tp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); tryTeam(); } });
     save.addEventListener('click', function () {
       var c = R.parseSetup(ta.value);
       if (!c) { refresh('❌ 설정 링크가 올바르지 않습니다. 받은 링크 전체를 붙여넣어 주세요.', 'bad'); return; }
