@@ -70,6 +70,16 @@ footer{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
 .ref-box{margin-top:10px;padding:8px 12px 10px;border:1px dashed var(--line);border-radius:10px;background:var(--bg)}
 .ref-box .check{margin-top:0}
 
+/* 확인 필요 알림 창 */
+.alert-title{color:var(--warn)}
+.issue{border-top:1px solid var(--line);padding:10px 0}
+.issue .shelf-pick{margin-top:8px}
+.issue-memo{width:100%;min-height:44px;font:inherit;font-size:16px;border-radius:10px;border:1px solid var(--line);
+  background:var(--card);color:var(--ink);padding:0 10px;margin-top:6px}
+/* REF → 선반 안내(크게) */
+.where{margin-top:6px;font-size:22px;font-weight:800;color:var(--ok)}
+.where.none{color:var(--warn);font-size:18px}
+
 /* 입출고 기록 칸 */
 .field{display:flex;align-items:center;gap:10px;margin-top:10px}
 .field span{flex:none;width:56px;font-size:15px;color:var(--muted)}
